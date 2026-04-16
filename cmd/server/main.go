@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -15,49 +14,57 @@ import (
 	"github.com/shafikshaon/ratelimit/internal/config"
 	"github.com/shafikshaon/ratelimit/internal/database"
 	"github.com/shafikshaon/ratelimit/internal/handler"
+	"github.com/shafikshaon/ratelimit/internal/logger"
 	"github.com/shafikshaon/ratelimit/internal/repository"
+	"go.uber.org/zap"
 )
 
 func main() {
+	// Logger — dev mode when GIN_MODE is not "release"
+	logger.Init(os.Getenv("GIN_MODE") != "release")
+	defer logger.Sync()
+
+	log := logger.L
+
 	cfg := config.Load()
 
 	// PostgreSQL
 	db, err := database.NewPool(cfg)
 	if err != nil {
-		log.Fatalf("connect to postgres: %v", err)
+		log.Fatal("connect to postgres", zap.Error(err))
 	}
 	defer db.Close()
 
 	if err := runMigrations(db); err != nil {
-		log.Fatalf("run migrations: %v", err)
+		log.Fatal("run migrations", zap.Error(err))
 	}
 
 	// Redis
 	redisClient, err := database.NewRedisClient(cfg)
 	if err != nil {
-		log.Fatalf("connect to redis: %v", err)
+		log.Fatal("connect to redis", zap.Error(err))
 	}
 	defer redisClient.Close()
 
 	// ScyllaDB
 	scyllaSession, err := database.NewScyllaSession(cfg)
 	if err != nil {
-		log.Fatalf("connect to scylla: %v", err)
+		log.Fatal("connect to scylla", zap.Error(err))
 	}
 	defer scyllaSession.Close()
 
 	if err := database.InitScyllaSchema(scyllaSession, cfg.ScyllaKeyspace); err != nil {
-		log.Fatalf("init scylla schema: %v", err)
+		log.Fatal("init scylla schema", zap.Error(err))
 	}
 
-	// Repositories — overrideRepo must be created first; tierRepo depends on it for MGET fallback
+	// Repositories
 	apiRepo := repository.NewAPIRepository(db)
 	overrideRepo := repository.NewOverrideRepository(scyllaSession, cfg.ScyllaKeyspace, redisClient)
 	tierRepo := repository.NewTierRepository(db, redisClient, overrideRepo)
 
 	// Warm Redis cache for all APIs at startup
 	if err := warmTierCache(context.Background(), apiRepo, tierRepo); err != nil {
-		log.Printf("warn: tier cache warm-up failed: %v", err)
+		log.Warn("tier cache warm-up failed", zap.Error(err))
 	}
 
 	apiHandler := handler.NewAPIHandler(apiRepo, tierRepo, overrideRepo)
@@ -87,9 +94,9 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("server listening on :%s", cfg.ServerPort)
+		log.Info("server listening", zap.String("addr", ":"+cfg.ServerPort))
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("listen: %v", err)
+			log.Fatal("listen", zap.Error(err))
 		}
 	}()
 
@@ -97,11 +104,11 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	log.Println("shutting down server...")
+	log.Info("shutting down server...")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatalf("server forced shutdown: %v", err)
+		log.Fatal("server forced shutdown", zap.Error(err))
 	}
-	log.Println("server stopped")
+	log.Info("server stopped")
 }

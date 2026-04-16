@@ -6,6 +6,7 @@ import (
 
 	"github.com/gocql/gocql"
 	"github.com/shafikshaon/ratelimit/internal/config"
+	"github.com/shafikshaon/ratelimit/internal/logger"
 )
 
 func NewScyllaSession(cfg *config.Config) (*gocql.Session, error) {
@@ -14,6 +15,9 @@ func NewScyllaSession(cfg *config.Config) (*gocql.Session, error) {
 	cluster.Timeout = 30 * time.Second
 	cluster.ConnectTimeout = 30 * time.Second
 	cluster.RetryPolicy = &gocql.ExponentialBackoffRetryPolicy{NumRetries: 3}
+
+	// Attach observer — logs every CQL statement with keyspace, values, rows and duration.
+	cluster.QueryObserver = logger.NewScyllaObserver()
 
 	session, err := cluster.CreateSession()
 	if err != nil {

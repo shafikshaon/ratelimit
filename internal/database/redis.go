@@ -6,6 +6,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"github.com/shafikshaon/ratelimit/internal/config"
+	"github.com/shafikshaon/ratelimit/internal/logger"
 )
 
 func NewRedisClient(cfg *config.Config) (*redis.Client, error) {
@@ -13,6 +14,10 @@ func NewRedisClient(cfg *config.Config) (*redis.Client, error) {
 		Addr:     cfg.RedisAddr,
 		Password: cfg.RedisPassword,
 	})
+
+	// Attach hook — logs every command and pipeline with full args and duration.
+	client.AddHook(logger.NewRedisHook())
+
 	if err := client.Ping(context.Background()).Err(); err != nil {
 		return nil, fmt.Errorf("ping redis: %w", err)
 	}

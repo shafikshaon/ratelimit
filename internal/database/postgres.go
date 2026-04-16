@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shafikshaon/ratelimit/internal/config"
+	"github.com/shafikshaon/ratelimit/internal/logger"
 )
 
 func NewPool(cfg *config.Config) (*pgxpool.Pool, error) {
@@ -19,6 +20,9 @@ func NewPool(cfg *config.Config) (*pgxpool.Pool, error) {
 	poolCfg.MinConns = 2
 	poolCfg.MaxConnLifetime = time.Hour
 	poolCfg.MaxConnIdleTime = 30 * time.Minute
+
+	// Attach query tracer — logs every SQL statement with args and duration.
+	poolCfg.ConnConfig.Tracer = logger.NewPgxTracer()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
