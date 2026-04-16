@@ -37,9 +37,15 @@ func main() {
 	router := gin.Default()
 	router.Use(cors.Default())
 
+	router.StaticFile("/", "./index.html")
+	router.StaticFile("/tester.html", "./tester.html")
+
 	v1 := router.Group("/api/v1")
 	{
 		v1.GET("/apis", apiHandler.ListAPIs)
+		v1.PATCH("/apis/:name/tiers/:tier", apiHandler.UpdateTier)
+		v1.POST("/apis/:name/overrides", apiHandler.CreateOverride)
+		v1.DELETE("/apis/:name/overrides/:wallet", apiHandler.DeleteOverride)
 	}
 
 	srv := &http.Server{

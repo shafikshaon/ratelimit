@@ -135,9 +135,9 @@
 
 <script>
 // ═══════════════════════════════════════════════
-//  CONSTANTS & DEFAULTS
+//  API BASE
 // ═══════════════════════════════════════════════
-const STORAGE_KEY = 'ratelimit_config_v2';
+const API_BASE = '/api/v1';
 
 // ═══════════════════════════════════════════════
 //  USAGE STORE  (shared with tester.html via localStorage)
@@ -147,7 +147,6 @@ const USAGE_KEY = 'ratelimit_usage_v2';
 function getUsage() {
   try { return JSON.parse(localStorage.getItem(USAGE_KEY) || '{}'); } catch(e) { return {}; }
 }
-function saveUsage(u) { localStorage.setItem(USAGE_KEY, JSON.stringify(u)); }
 
 function unitToMs(unit, val) {
   return val * ({ seconds: 1000, minutes: 60000, hours: 3600000 }[unit] || 1000);
@@ -162,7 +161,7 @@ function getCurrentCount(u, key, tier) {
   const d = u[key];
   if (!d) return 0;
   if (tier.unit === 'daily') {
-    const ds = getDayStart(tier.resetHour ?? 0);
+    const ds = getDayStart(tier.reset_hour ?? 0);
     if (!d.dayStart || d.dayStart < ds) return 0;
     return d.count || 0;
   }
@@ -171,7 +170,7 @@ function getCurrentCount(u, key, tier) {
 }
 function getWindowRemaining(tier) {
   if (tier.unit === 'daily') {
-    const ds = getDayStart(tier.resetHour ?? 0);
+    const ds = getDayStart(tier.reset_hour ?? 0);
     const nextReset = ds + 86400000;
     const diff = nextReset - Date.now();
     const h = Math.floor(diff / 3600000), m = Math.floor((diff % 3600000) / 60000);
@@ -181,172 +180,74 @@ function getWindowRemaining(tier) {
   return `${tier.window}${label} rolling window`;
 }
 
-const DEFAULT_GROUPS = {
-  BALANCE: [
-    { name: 'view_current_balance', tiers: [
-        { tier:1, scope:'email',  redisKey:'rl:view_current_balance:{e}:t1',  window:10, unit:'seconds', maxRequests:7,    actionMode:'transparent', enabled:true  },
-        { tier:2, scope:'wallet', redisKey:'rl:view_current_balance:{w}:t2',  window:3,  unit:'hours',   maxRequests:100,  actionMode:'transparent', enabled:true  },
-        { tier:3, scope:'wallet', redisKey:'rl:view_current_balance:{w}:t3',  resetHour:0, unit:'daily', maxRequests:1500, actionMode:'transparent', enabled:true  },
-    ]},
-    { name: 'view_mini_statement' },
-    { name: 'view_account_summary', tiers: [
-        { tier:1, scope:'email',  redisKey:'rl:view_account_summary:{e}:t1',  window:10, unit:'seconds', maxRequests:5,    actionMode:'transparent', enabled:true  },
-        { tier:2, scope:'wallet', redisKey:'rl:view_account_summary:{w}:t2',  window:3,  unit:'hours',   maxRequests:250,  actionMode:'transparent', enabled:true  },
-        { tier:3, scope:'wallet', redisKey:'rl:view_account_summary:{w}:t3',  resetHour:0, unit:'daily', maxRequests:1800, actionMode:'transparent', enabled:true  },
-    ]},
-  ],
-  TRANSACTION: [
-    { name: 'view_recent_transaction'  },
-    { name: 'view_detail_transaction'  },
-    { name: 'view_transaction_history' },
-    { name: 'view_transaction_receipt' },
-    { name: 'export_transaction_csv'   },
-  ],
-  PAYMENT: [
-    { name: 'initiate_payment' },
-    { name: 'confirm_payment'  },
-    { name: 'cancel_payment'   },
-    { name: 'payment_status', tiers: [
-        { tier:1, scope:'email',  redisKey:'rl:payment_status:{e}:t1', window:30, unit:'seconds', maxRequests:3,   actionMode:'enforce', enabled:true },
-        { tier:2, scope:'wallet', redisKey:'rl:payment_status:{w}:t2', window:1,  unit:'minutes', maxRequests:10,  actionMode:'enforce', enabled:true },
-        { tier:3, scope:'wallet', redisKey:'rl:payment_status:{w}:t3', resetHour:0, unit:'daily', maxRequests:200, actionMode:'enforce', enabled:true },
-    ]},
-  ],
-  MERCHANT: [
-    { name: 'view_merchant_profile'    },
-    { name: 'view_merchant_stats'      },
-    { name: 'view_merchant_settlement' },
-    { name: 'update_merchant_profile'  },
-  ],
-  REPORT: [
-    { name: 'view_daily_report'   },
-    { name: 'view_monthly_report' },
-    { name: 'export_report_pdf'   },
-    { name: 'view_reconciliation' },
-  ],
-  CUSTOMER: [
-    { name: 'view_customer_profile' },
-    { name: 'view_customer_kyc'     },
-    { name: 'search_customer'       },
-  ],
-  NOTIFICATION: [
-    { name: 'view_notifications'     },
-    { name: 'mark_notification_read' },
-  ],
-  AUTH: [
-    { name: 'refresh_token' },
-    { name: 'verify_pin', tiers: [
-        { tier:1, scope:'email',  redisKey:'rl:verify_pin:{e}:t1', window:60, unit:'seconds', maxRequests:5,   actionMode:'enforce', enabled:true },
-        { tier:2, scope:'wallet', redisKey:'rl:verify_pin:{w}:t2', window:5,  unit:'minutes', maxRequests:10,  actionMode:'enforce', enabled:true },
-        { tier:3, scope:'wallet', redisKey:'rl:verify_pin:{w}:t3', resetHour:0, unit:'daily', maxRequests:20,  actionMode:'enforce', enabled:true },
-    ]},
-    { name: 'change_pin', tiers: [
-        { tier:1, scope:'email',  redisKey:'rl:change_pin:{e}:t1', window:60, unit:'seconds', maxRequests:3,  actionMode:'enforce', enabled:true },
-        { tier:2, scope:'wallet', redisKey:'rl:change_pin:{w}:t2', window:10, unit:'minutes', maxRequests:5,  actionMode:'enforce', enabled:true },
-        { tier:3, scope:'wallet', redisKey:'rl:change_pin:{w}:t3', resetHour:0, unit:'daily', maxRequests:10, actionMode:'enforce', enabled:true },
-    ]},
-  ],
-  UTILITY: [
-    { name: 'view_commission_rates' },
-    { name: 'view_service_charges'  },
-    { name: 'view_offers'           },
-    { name: 'view_faq'              },
-  ],
-  QR: [
-    { name: 'generate_qr_code' },
-    { name: 'scan_qr_code'     },
-    { name: 'view_qr_history'  },
-  ],
-  REFUND: [
-    { name: 'initiate_refund'     },
-    { name: 'view_refund_status'  },
-    { name: 'view_refund_history' },
-  ],
-  SUPPORT: [
-    { name: 'view_support_tickets'   },
-    { name: 'create_support_ticket'  },
-  ],
-};
-
-function mkDefaultTiers(name) {
-  return [
-    { tier:1, scope:'email',  redisKey:`rl:${name}:{e}:t1`, window:10, unit:'seconds', maxRequests:5,    actionMode:'transparent', enabled:false },
-    { tier:2, scope:'wallet', redisKey:`rl:${name}:{w}:t2`, window:3,  unit:'hours',   maxRequests:100,  actionMode:'transparent', enabled:false },
-    { tier:3, scope:'wallet', redisKey:`rl:${name}:{w}:t3`, resetHour:0, unit:'daily', maxRequests:1000, actionMode:'transparent', enabled:false },
-  ];
-}
-
-// ═══════════════════════════════════════════════
-//  LOCALSTORAGE
-// ═══════════════════════════════════════════════
-// Sample overrides seeded on first load
-const SAMPLE_OVERRIDES = {
-  view_current_balance: [
-    { wallet: '01700000099', t1: 'global', t2: '50',     t3: '800',  reason: 'VIP merchant – higher daily cap' },
-    { wallet: '01711223344', t1: 'global', t2: '20',     t3: '300',  reason: 'Fraud watch – reduced limits'    },
-    { wallet: '01855667788', t1: 'global', t2: 'global', t3: '2000', reason: 'Partner bank account'            },
-  ],
-  initiate_payment: [
-    { wallet: '01700000099', t1: 'global', t2: '500',   t3: '5000', reason: 'Super merchant'        },
-    { wallet: '01733445566', t1: 'global', t2: '30',    t3: '400',  reason: 'High chargeback rate'  },
-  ],
-  verify_pin: [
-    { wallet: '01711223344', t1: 'global', t2: '5', t3: '10', reason: 'Compromised device flag' },
-  ],
-  view_account_summary: [
-    { wallet: '01700000099', t1: 'global', t2: '150', t3: 'global', reason: 'Aggregator account' },
-  ],
-  view_transaction_history: [
-    { wallet: '01855667788', t1: 'global', t2: '200', t3: '3000', reason: 'Finance team bulk export' },
-  ],
-  export_transaction_csv: [
-    { wallet: '01700000099', t1: 'global', t2: '10', t3: '50', reason: 'Rate-limited export'   },
-    { wallet: '01855667788', t1: 'global', t2: '25', t3: '100', reason: 'Approved bulk access' },
-  ],
-  search_customer: [
-    { wallet: '01733445566', t1: 'global', t2: '100', t3: '500', reason: 'CX team power user' },
-  ],
-  change_pin: [
-    { wallet: '01711223344', t1: 'global', t2: '2', t3: '5', reason: 'Suspicious activity' },
-  ],
-};
-
-function buildDefaultConfig() {
-  const apis = {}, overrides = {};
-  $.each(DEFAULT_GROUPS, function(group, items) {
-    items.forEach(item => {
-      apis[item.name] = {
-        group,
-        tiers: JSON.parse(JSON.stringify(item.tiers || mkDefaultTiers(item.name)))
-      };
-      // seed sample overrides where defined, else empty
-      overrides[item.name] = SAMPLE_OVERRIDES[item.name]
-        ? JSON.parse(JSON.stringify(SAMPLE_OVERRIDES[item.name]))
-        : [];
-    });
-  });
-  return { apis, overrides };
-}
-
-function loadConfig() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch(e) {}
-  const def = buildDefaultConfig();
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(def));
-  return def;
-}
-
-function persist() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
-}
-
 // ═══════════════════════════════════════════════
 //  STATE
 // ═══════════════════════════════════════════════
-let config = loadConfig();
-let selectedApiName = Object.keys(config.apis)[0];
+let config = { apis: {}, overrides: {} };
+let apiGroups = [];
+let selectedApiName = null;
+const patchTimers = {};
+
+// ═══════════════════════════════════════════════
+//  API CALLS
+// ═══════════════════════════════════════════════
+async function loadConfig() {
+  const res = await fetch(`${API_BASE}/apis`);
+  if (!res.ok) throw new Error('Failed to load config');
+  const json = await res.json();
+  apiGroups = json.data || [];
+  config = { apis: {}, overrides: {} };
+  for (const g of apiGroups) {
+    for (const api of g.apis) {
+      config.apis[api.name] = { group: api.group, tiers: api.tiers };
+      config.overrides[api.name] = api.overrides || [];
+    }
+  }
+  if (!selectedApiName && apiGroups.length && apiGroups[0].apis.length) {
+    selectedApiName = apiGroups[0].apis[0].name;
+  }
+}
+
+// Debounced PATCH — reads current in-memory tier state when timer fires
+function schedulePatch(apiName, tierNum) {
+  const key = `${apiName}:${tierNum}`;
+  clearTimeout(patchTimers[key]);
+  patchTimers[key] = setTimeout(async () => {
+    const tier = config.apis[apiName]?.tiers.find(t => t.tier === tierNum);
+    if (!tier) return;
+    try {
+      const res = await fetch(`${API_BASE}/apis/${encodeURIComponent(apiName)}/tiers/${tierNum}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(tier),
+      });
+      if (!res.ok) throw new Error();
+      showToast('Saved', 'ok');
+    } catch {
+      showToast('Failed to save tier', 'error');
+    }
+  }, 600);
+}
+
+async function apiAddOverride(apiName, override) {
+  const res = await fetch(`${API_BASE}/apis/${encodeURIComponent(apiName)}/overrides`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(override),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to add override');
+  }
+}
+
+async function apiDeleteOverride(apiName, wallet) {
+  const res = await fetch(
+    `${API_BASE}/apis/${encodeURIComponent(apiName)}/overrides/${encodeURIComponent(wallet)}`,
+    { method: 'DELETE' }
+  );
+  if (!res.ok) throw new Error('Failed to remove override');
+}
 
 // ═══════════════════════════════════════════════
 //  BADGE HELPERS
@@ -360,7 +261,7 @@ const TIER_BADGE  = ['bg-blue-100 text-blue-800', 'bg-amber-100 text-amber-800',
 const SCOPE_BADGE = { email: 'bg-pink-100 text-pink-700', wallet: 'bg-amber-100 text-amber-700' };
 
 function computeStatus(tiers) {
-  const modes = [...new Set(tiers.map(t => t.actionMode))];
+  const modes = [...new Set(tiers.map(t => t.action_mode))];
   return modes.length === 1 ? modes[0] : 'mixed';
 }
 
@@ -393,13 +294,15 @@ function renderSidebar(filter) {
   filter = (filter || '').toLowerCase();
   const $list = $('#api-list').empty();
 
-  $.each(DEFAULT_GROUPS, function(group, items) {
-    const filtered = filter ? items.filter(a => a.name.toLowerCase().includes(filter)) : items;
-    if (!filtered.length) return;
+  for (const group of apiGroups) {
+    const filtered = filter
+      ? group.apis.filter(a => a.name.toLowerCase().includes(filter))
+      : [...group.apis];
+    if (!filtered.length) continue;
 
     const $group = $('<div>');
     $('<p>').addClass('px-4 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-stone-400')
-      .text(`${group} (${filtered.length})`).appendTo($group);
+      .text(`${group.name} (${filtered.length})`).appendTo($group);
 
     filtered.forEach(item => {
       const apiCfg = config.apis[item.name];
@@ -429,7 +332,7 @@ function renderSidebar(filter) {
     });
 
     $list.append($group);
-  });
+  }
 }
 
 // ═══════════════════════════════════════════════
@@ -455,7 +358,7 @@ function renderMain() {
 
   // ── Title card ──
   const redisKeys = tiers.map(t =>
-    `<span class="inline-block font-mono text-[10.5px] text-stone-500 bg-stone-100 border border-stone-200 rounded-lg px-2 py-0.5">${t.redisKey}</span>`
+    `<span class="inline-block font-mono text-[10.5px] text-stone-500 bg-stone-100 border border-stone-200 rounded-lg px-2 py-0.5">${t.redis_key}</span>`
   ).join('');
   $wrap.append(`
     <div class="bg-white border border-stone-200/80 rounded-2xl px-5 py-4 shadow-sm">
@@ -473,7 +376,6 @@ function renderMain() {
         Live usage preview
       </div>
       <div class="flex items-center gap-2 flex-1 flex-wrap">
-        <!-- Email for T1 -->
         <div class="flex items-center gap-1.5">
           <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 flex-shrink-0">T1</span>
           <div class="relative">
@@ -482,7 +384,6 @@ function renderMain() {
               class="pl-7 pr-3 py-1.5 text-xs border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 bg-stone-50 w-44 placeholder-stone-400" />
           </div>
         </div>
-        <!-- Wallet for T2/T3 -->
         <div class="flex items-center gap-1.5">
           <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 flex-shrink-0">T2/T3</span>
           <div class="relative">
@@ -496,7 +397,6 @@ function renderMain() {
     </div>`);
   $wrap.append($usageBar);
 
-  // auto-refresh usage when inputs change
   $usageBar.find('#preview-email, #preview-wallet').on('input', () => refreshUsageOnCards(selectedApiName));
 
   // ── Tier cards ──
@@ -517,23 +417,23 @@ function buildTierCard(t, idx) {
   const windowField = isDaily ? `
     <div class="space-y-1">
       <label class="text-[11px] font-medium text-stone-500">Reset hour (0-23)</label>
-      <input data-field="resetHour" type="number" min="0" max="23" value="${t.resetHour ?? 0}"
+      <input data-field="reset_hour" type="number" min="0" max="23" value="${t.reset_hour ?? 0}"
         class="w-full px-3 py-2 text-sm font-semibold border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white" />
     </div>
     <div class="space-y-1">
       <label class="text-[11px] font-medium text-stone-500">Window</label>
       <div class="relative">
-        <select data-field="windowDaily"
+        <select data-field="window_daily"
           class="w-full px-3 py-2 text-sm font-semibold border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white appearance-none pr-8">
-          <option ${t.windowDaily==='24h fixed daily'||!t.windowDaily?'selected':''}>24h fixed daily</option>
-          <option ${t.windowDaily==='12h fixed'?'selected':''}>12h fixed</option>
+          <option selected>24h fixed daily</option>
+          <option>12h fixed</option>
         </select>
         <svg class="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-stone-400 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6,9 12,15 18,9"/></svg>
       </div>
     </div>` : `
     <div class="space-y-1">
       <label class="text-[11px] font-medium text-stone-500">Window</label>
-      <input data-field="window" type="number" min="1" value="${t.window}"
+      <input data-field="window" type="number" min="1" value="${t.window ?? 10}"
         class="w-full px-3 py-2 text-sm font-semibold border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white" />
     </div>
     <div class="space-y-1">
@@ -553,21 +453,21 @@ function buildTierCard(t, idx) {
         <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full ${TIER_BADGE[idx]}">Tier ${t.tier}</span>
         <span class="text-[11px] font-medium px-2 py-0.5 rounded-full ${SCOPE_BADGE[t.scope]||'bg-stone-100 text-stone-600'}">${t.scope}</span>
       </div>
-      <div class="font-mono text-[10.5px] text-stone-500 bg-stone-50 border border-stone-100 rounded-xl px-3 py-2 break-all leading-relaxed">${t.redisKey}</div>
+      <div class="font-mono text-[10.5px] text-stone-500 bg-stone-50 border border-stone-100 rounded-xl px-3 py-2 break-all leading-relaxed">${t.redis_key}</div>
       ${windowField}
       <div class="space-y-1">
         <label class="text-[11px] font-medium text-stone-500">Max requests</label>
-        <input data-field="maxRequests" type="number" min="1" value="${t.maxRequests}"
+        <input data-field="max_requests" type="number" min="1" value="${t.max_requests}"
           class="w-full px-3 py-2 text-sm font-semibold border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white" />
       </div>
       <div class="space-y-1">
         <label class="text-[11px] font-medium text-stone-500">Action mode</label>
         <div class="flex border border-stone-200 rounded-xl overflow-hidden">
           <button class="action-btn flex-1 py-2 text-xs transition-colors
-            ${t.actionMode==='transparent' ? 'bg-amber-50 text-amber-700 font-semibold' : 'bg-white text-stone-500 hover:bg-stone-50'}"
+            ${t.action_mode==='transparent' ? 'bg-amber-50 text-amber-700 font-semibold' : 'bg-white text-stone-500 hover:bg-stone-50'}"
             data-mode="transparent">Transparent</button>
           <button class="action-btn flex-1 py-2 text-xs border-l border-stone-200 transition-colors
-            ${t.actionMode==='enforce' ? 'bg-amber-50 text-amber-700 font-semibold' : 'bg-white text-stone-500 hover:bg-stone-50'}"
+            ${t.action_mode==='enforce' ? 'bg-amber-50 text-amber-700 font-semibold' : 'bg-white text-stone-500 hover:bg-stone-50'}"
             data-mode="enforce">Enforce</button>
         </div>
       </div>
@@ -581,44 +481,37 @@ function buildTierCard(t, idx) {
       </div>
     </div>`);
 
-  // ── Live field bindings ──
   function tierRef() { return config.apis[selectedApiName].tiers[idx]; }
 
   $card.find('[data-field="window"]').on('input', function() {
     tierRef().window = Math.max(1, parseInt($(this).val()) || 1);
-    persist();
+    schedulePatch(selectedApiName, t.tier);
   });
   $card.find('[data-field="unit"]').on('change', function() {
     tierRef().unit = $(this).val();
-    persist();
+    schedulePatch(selectedApiName, t.tier);
   });
-  $card.find('[data-field="resetHour"]').on('input', function() {
-    tierRef().resetHour = Math.min(23, Math.max(0, parseInt($(this).val()) || 0));
-    persist();
+  $card.find('[data-field="reset_hour"]').on('input', function() {
+    tierRef().reset_hour = Math.min(23, Math.max(0, parseInt($(this).val()) || 0));
+    schedulePatch(selectedApiName, t.tier);
   });
-  $card.find('[data-field="windowDaily"]').on('change', function() {
-    tierRef().windowDaily = $(this).val();
-    persist();
-  });
-  $card.find('[data-field="maxRequests"]').on('input', function() {
-    tierRef().maxRequests = Math.max(1, parseInt($(this).val()) || 1);
-    persist();
+  $card.find('[data-field="max_requests"]').on('input', function() {
+    tierRef().max_requests = Math.max(1, parseInt($(this).val()) || 1);
+    schedulePatch(selectedApiName, t.tier);
   });
 
   $card.find('.action-btn').on('click', function() {
     const mode = $(this).data('mode');
-    tierRef().actionMode = mode;
-    persist();
-    // Update button styles
+    tierRef().action_mode = mode;
+    schedulePatch(selectedApiName, t.tier);
     $card.find('.action-btn').removeClass('bg-amber-50 text-amber-700 font-semibold').addClass('bg-white text-stone-500');
     $(this).removeClass('bg-white text-stone-500').addClass('bg-amber-50 text-amber-700 font-semibold');
-    // Refresh sidebar badge live
     renderSidebar($('#api-search').val());
   });
 
   $card.find('.toggle-sw input').on('change', function() {
     tierRef().enabled = $(this).is(':checked');
-    persist();
+    schedulePatch(selectedApiName, t.tier);
   });
 
   // ── Usage display ──
@@ -660,8 +553,7 @@ function refreshUsageOnCards(apiName) {
     }
     const usageKey = `${apiName}|t${tier.tier}|${scopeId}`;
 
-    // Resolve effective max (check overrides)
-    let maxReq = tier.maxRequests;
+    let maxReq = tier.max_requests;
     const ovr = (config.overrides[apiName] || []).find(r => r.wallet === wallet);
     if (ovr) {
       const ovrVal = [ovr.t1, ovr.t2, ovr.t3][i];
@@ -792,13 +684,17 @@ function buildOverridesCard(apiName) {
         const $del = $('<button>')
           .addClass('text-stone-300 hover:text-red-500 transition-colors p-1 rounded')
           .html(`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>`)
-          .on('click', function() {
+          .on('click', async function() {
             const deletedWallet = config.overrides[apiName][i].wallet;
-            config.overrides[apiName].splice(i, 1);
-            persist();
-            refreshTable();
-            if ($card.find('#lookup-wallet').val().trim() === deletedWallet) doLookup();
-            showToast('Override removed', 'ok');
+            try {
+              await apiDeleteOverride(apiName, deletedWallet);
+              config.overrides[apiName].splice(i, 1);
+              refreshTable();
+              if ($card.find('#lookup-wallet').val().trim() === deletedWallet) doLookup();
+              showToast('Override removed', 'ok');
+            } catch(e) {
+              showToast(e.message, 'error');
+            }
           });
 
         $('<tr class="border-t border-stone-50 hover:bg-stone-50/60 transition-colors">').append(
@@ -821,8 +717,8 @@ function buildOverridesCard(apiName) {
     return tiers.map((t, i) => {
       const isDaily = t.unit === 'daily';
       const globalLimit = isDaily
-        ? `${t.maxRequests} / day (resets ${t.resetHour}:00)`
-        : `${t.maxRequests} / ${t.window} ${t.unit}`;
+        ? `${t.max_requests} / day (resets ${t.reset_hour}:00)`
+        : `${t.max_requests} / ${t.window} ${t.unit}`;
 
       let effectiveLimit = globalLimit;
       let source = 'global';
@@ -835,7 +731,7 @@ function buildOverridesCard(apiName) {
         }
       }
 
-      return { tier: t.tier, scope: t.scope, globalLimit, effectiveLimit, source, enabled: t.enabled, actionMode: t.actionMode };
+      return { tier: t.tier, scope: t.scope, globalLimit, effectiveLimit, source, enabled: t.enabled, actionMode: t.action_mode };
     });
   }
 
@@ -854,7 +750,6 @@ function buildOverridesCard(apiName) {
 
     const hasOverride = (config.overrides[apiName] || []).some(r => r.wallet === walletNum);
 
-    // Header row
     const $header = $(`
       <div class="flex items-center gap-2 mb-3">
         <span class="font-mono text-xs font-semibold text-stone-700">${walletNum}</span>
@@ -864,7 +759,6 @@ function buildOverridesCard(apiName) {
       </div>`);
     $result.append($header);
 
-    // State grid
     const $grid = $('<div class="grid grid-cols-1 sm:grid-cols-3 gap-2">').appendTo($result);
     const TIER_COLORS = [
       { bg: 'bg-blue-50', border: 'border-blue-100', label: 'text-blue-700', badge: 'bg-blue-100 text-blue-800' },
@@ -879,7 +773,7 @@ function buildOverridesCard(apiName) {
         ? '<span class="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0"></span>'
         : '<span class="w-1.5 h-1.5 rounded-full bg-stone-300 flex-shrink-0"></span>';
 
-      const $tile = $(`
+      $grid.append($(`
         <div class="rounded-xl border ${c.border} ${c.bg} p-3 space-y-2">
           <div class="flex items-center justify-between gap-1">
             <div class="flex items-center gap-1.5">
@@ -906,8 +800,7 @@ function buildOverridesCard(apiName) {
               ${isOverridden ? '↑ overridden' : 'global default'}
             </span>
           </div>
-        </div>`);
-      $grid.append($tile);
+        </div>`));
     });
   }
 
@@ -921,31 +814,34 @@ function buildOverridesCard(apiName) {
     $(this).addClass('hidden');
   });
 
-  $card.find('#ov-add').on('click', function() {
+  $card.find('#ov-add').on('click', async function() {
     const wallet = $card.find('#ov-wallet').val().trim();
     if (!wallet) {
       $card.find('#ov-wallet').focus().addClass('ring-2 ring-red-400');
       setTimeout(() => $card.find('#ov-wallet').removeClass('ring-2 ring-red-400'), 1500);
       return;
     }
-    // Duplicate check
     if (config.overrides[apiName].some(r => r.wallet === wallet)) {
       showToast('Wallet already has an override', 'error');
       return;
     }
-    config.overrides[apiName].push({
+    const override = {
       wallet,
       t1: $card.find('#ov-t1').val().trim() || 'global',
       t2: $card.find('#ov-t2').val().trim() || 'global',
       t3: $card.find('#ov-t3').val().trim() || 'global',
-      reason: $card.find('#ov-reason').val().trim() || ''
-    });
-    persist();
-    $card.find('#ov-wallet,#ov-t1,#ov-t2,#ov-t3,#ov-reason').val('');
-    refreshTable();
-    // refresh lookup if this wallet is currently being viewed
-    if ($card.find('#lookup-wallet').val().trim() === wallet) doLookup();
-    showToast('Override added', 'ok');
+      reason: $card.find('#ov-reason').val().trim() || '',
+    };
+    try {
+      await apiAddOverride(apiName, override);
+      config.overrides[apiName].push(override);
+      $card.find('#ov-wallet,#ov-t1,#ov-t2,#ov-t3,#ov-reason').val('');
+      refreshTable();
+      if ($card.find('#lookup-wallet').val().trim() === wallet) doLookup();
+      showToast('Override added', 'ok');
+    } catch(e) {
+      showToast(e.message, 'error');
+    }
   });
 
   refreshTable();
@@ -967,27 +863,27 @@ function closeApiPanel() {
 // ═══════════════════════════════════════════════
 //  INIT
 // ═══════════════════════════════════════════════
-$(function() {
+$(async function() {
+  try {
+    await loadConfig();
+  } catch(e) {
+    showToast('Could not connect to server', 'error');
+  }
+
   renderSidebar();
   renderMain();
 
-  // Refresh usage when tester page writes to localStorage (cross-tab)
   window.addEventListener('storage', (e) => {
     if (e.key === USAGE_KEY) refreshUsageOnCards(selectedApiName);
   });
-  // Also poll every 4s in case same tab
   setInterval(() => refreshUsageOnCards(selectedApiName), 4000);
 
-  // Search
   $('#api-search').on('input', function() { renderSidebar($(this).val()); });
 
-  // Save button — explicit persist + toast
   $('#save-btn').on('click', function() {
-    persist();
-    showToast('Configuration saved', 'ok');
+    showToast('Changes are saved automatically', 'ok');
   });
 
-  // Mobile panel
   $('#api-panel-toggle').on('click', function() {
     if ($('#api-panel').hasClass('-translate-x-full')) openApiPanel(); else closeApiPanel();
   });
