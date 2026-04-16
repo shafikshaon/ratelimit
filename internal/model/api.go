@@ -8,8 +8,6 @@ type Tier struct {
 	Window      *int   `json:"window,omitempty"`
 	Unit        string `json:"unit"`
 	MaxRequests int    `json:"max_requests"`
-	ActionMode  string `json:"action_mode"`
-	Enabled     bool   `json:"enabled"`
 	ResetHour   int    `json:"reset_hour"`
 }
 
@@ -37,8 +35,6 @@ type ResolvedTier struct {
 	GlobalMax    int    `json:"global_max"`
 	EffectiveMax int    `json:"effective_max"`
 	Overridden   bool   `json:"overridden"`
-	ActionMode   string `json:"action_mode"`
-	Enabled      bool   `json:"enabled"`
 	ResetHour    int    `json:"reset_hour"`
 }
 
@@ -62,4 +58,31 @@ type APIGroup struct {
 	Name  string `json:"name"`
 	Count int    `json:"count"`
 	APIs  []API  `json:"apis"`
+}
+
+// TierCheckResult is the per-tier outcome of a rate-limit check.
+type TierCheckResult struct {
+	Tier    int    `json:"tier"`
+	Scope   string `json:"scope"`
+	Status  string `json:"status"` // "pass", "blocked", "skipped"
+	Used    int64  `json:"used"`
+	Limit   int    `json:"limit"`
+	ScopeID string `json:"scope_id"`
+}
+
+// CheckResponse is returned by POST /apis/:name/check.
+type CheckResponse struct {
+	Allowed     bool              `json:"allowed"`
+	TierResults []TierCheckResult `json:"tier_results"`
+}
+
+// TierUsage is the read-only usage snapshot for one tier.
+type TierUsage struct {
+	Tier    int    `json:"tier"`
+	Scope   string `json:"scope"`
+	Used    int64  `json:"used"`
+	Limit   int    `json:"limit"`
+	ScopeID string `json:"scope_id"`
+	Window  string `json:"window"`
+	ResetIn int64  `json:"reset_in"` // seconds until window resets; -1 = no active window
 }

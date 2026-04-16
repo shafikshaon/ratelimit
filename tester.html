@@ -193,61 +193,16 @@
 // ═══════════════════════════════════════════════
 //  CONSTANTS
 // ═══════════════════════════════════════════════
-const API_BASE  = '/api/v1';
-const USAGE_KEY = 'ratelimit_usage_v2';
+const API_BASE = '/api/v1';
 
-// ═══════════════════════════════════════════════
-//  USAGE UTILITIES  (localStorage — client-side simulation)
-// ═══════════════════════════════════════════════
-function getUsage() {
-  try { return JSON.parse(localStorage.getItem(USAGE_KEY) || '{}'); } catch(e) { return {}; }
-}
-function saveUsage(u) { localStorage.setItem(USAGE_KEY, JSON.stringify(u)); }
-
-function unitToMs(unit, val) {
-  return val * ({ seconds: 1000, minutes: 60000, hours: 3600000 }[unit] || 1000);
-}
-function getDayStart(resetHour) {
-  const now = new Date();
-  const s = new Date(now.getFullYear(), now.getMonth(), now.getDate(), resetHour || 0, 0, 0, 0);
-  if (now < s) s.setDate(s.getDate() - 1);
-  return s.getTime();
-}
-function getCurrentCount(u, key, tier) {
-  const d = u[key];
-  if (!d) return 0;
-  if (tier.unit === 'daily') {
-    const ds = getDayStart(tier.reset_hour ?? 0);
-    if (!d.dayStart || d.dayStart < ds) return 0;
-    return d.count || 0;
-  }
-  const cutoff = Date.now() - unitToMs(tier.unit, tier.window);
-  return (d.requests || []).filter(ts => ts > cutoff).length;
-}
-function getWindowRemaining(tier) {
-  if (tier.unit === 'daily') {
-    const ds = getDayStart(tier.reset_hour ?? 0);
-    const nextReset = ds + 86400000;
-    const diff = nextReset - Date.now();
-    const h = Math.floor(diff / 3600000), m = Math.floor((diff % 3600000) / 60000);
-    return `resets in ${h}h ${m}m`;
-  }
-  const label = { seconds: 's', minutes: 'm', hours: 'h' }[tier.unit] || '';
-  return `${tier.window}${label} rolling window`;
-}
-function recordRequest(u, key, tier) {
-  if (!u[key]) u[key] = {};
-  if (tier.unit === 'daily') {
-    const ds = getDayStart(tier.reset_hour ?? 0);
-    if (!u[key].dayStart || u[key].dayStart < ds) u[key] = { dayStart: ds, count: 0 };
-    u[key].count = (u[key].count || 0) + 1;
-  } else {
-    const wMs = unitToMs(tier.unit, tier.window);
-    const cutoff = Date.now() - wMs;
-    if (!u[key].requests) u[key].requests = [];
-    u[key].requests = u[key].requests.filter(ts => ts > cutoff);
-    u[key].requests.push(Date.now());
-  }
+function formatResetIn(resetIn) {
+  if (!resetIn || resetIn < 0) return null;
+  const h = Math.floor(resetIn / 3600);
+  const m = Math.floor((resetIn % 3600) / 60);
+  const s = resetIn % 60;
+  if (h > 0) return `resets in ${h}h ${m}m`;
+  if (m > 0) return `resets in ${m}m ${s}s`;
+  return `resets in ${s}s`;
 }
 
 // ═══════════════════════════════════════════════
@@ -332,10 +287,9 @@ async function updateConfigSummary() {
     const win = t.unit === 'daily'
       ? `${t.max_requests} / day`
       : `${t.max_requests} / ${t.window} ${t.unit}`;
-    const disabledNote = t.enabled ? '' : ' <span class="text-stone-300">(disabled)</span>';
     $sum.append(`<div class="flex items-start gap-1.5">
       <span class="font-semibold ${TIER_COLORS[i]} flex-shrink-0">T${t.tier}</span>
-      <span>${t.scope} · ${win} · <span class="${t.action_mode === 'enforce' ? 'text-red-500' : 'text-stone-400'}">${t.action_mode}</span>${disabledNote}</span>
+      <span>${t.scope} · ${win}</span>
     </div>`);
   });
 }
@@ -374,8 +328,6 @@ async function buildTierStatusCards(apiName) {
         <div class="flex items-center gap-1.5 flex-wrap">
           <span class="text-[10px] font-bold px-2 py-0.5 rounded ${TIER_BADGE[i]}">Tier ${t.tier}</span>
           <span class="text-[10px] font-semibold px-2 py-0.5 rounded ${SCOPE_BADGE[t.scope] || 'bg-stone-100 text-stone-600'}">${t.scope}</span>
-          <span class="text-[9px] font-semibold px-1.5 py-0.5 rounded ml-auto
-            ${t.action_mode === 'enforce' ? 'bg-red-50 text-red-500' : 'bg-stone-100 text-stone-400'}">${t.action_mode}</span>
         </div>
         <!-- Scope identity -->
         <div class="flex items-center gap-1.5 min-w-0">
@@ -393,134 +345,74 @@ async function buildTierStatusCards(apiName) {
         </div>
         <!-- Footer row -->
         <div class="flex items-center justify-between gap-2 pt-0.5 border-t border-stone-100">
-          <p class="text-[9px] text-stone-400 truncate" id="tc-win-${i}">${getWindowRemaining(t)}</p>
-          <span class="text-[9px] font-bold px-2 py-0.5 rounded flex-shrink-0 bg-stone-100 text-stone-400" id="tc-status-${i}">
-            ${t.enabled ? 'READY' : 'DISABLED'}
-          </span>
+          <p class="text-[9px] text-stone-400 truncate" id="tc-win-${i}">${t.unit === 'daily' ? `daily (resets ${String(t.reset_hour??0).padStart(2,'0')}:00 UTC)` : `${t.window} ${t.unit}`}</p>
+          <span class="text-[9px] font-bold px-2 py-0.5 rounded flex-shrink-0 bg-stone-100 text-stone-400" id="tc-status-${i}">READY</span>
         </div>
       </div>`));
   });
 }
 
-// Updates usage bars on existing cards — fetches wallet resolved config for effective limits
+// Updates usage bars on existing cards — reads real counters from Redis via backend.
 async function updateTierCards(apiName) {
   if (!apiName) return;
+  const email  = $('#tester-email').val().trim();
+  const wallet = $('#tester-wallet').val().trim();
+
   let tiers;
   try { tiers = await fetchTierConfig(apiName); } catch(e) { return; }
 
-  const email  = $('#tester-email').val().trim();
-  const wallet = $('#tester-wallet').val().trim();
-  const u = getUsage();
-
-  // Fetch resolved config for effective limits (single MGET round trip)
-  let resolved = null;
-  if (wallet) {
-    try { resolved = await fetchWalletConfig(apiName, wallet); } catch(e) { /* best-effort */ }
-  }
-
-  tiers.forEach((tier, i) => {
-    if (!tier.enabled) {
-      $(`#tc-scope-${i}`).text('disabled').addClass('italic text-stone-300').removeClass('text-stone-400 text-stone-500');
+  if (!email && !wallet) {
+    tiers.forEach((tier, i) => {
+      const scopeLabel = i === 0 ? 'email' : 'wallet';
+      $(`#tc-scope-${i}`).text(`No ${scopeLabel} — not tracked`).addClass('italic text-stone-300').removeClass('text-stone-400 text-stone-500');
       $(`#tc-bar-${i}`).css('width','0%').removeClass('bg-emerald-400 bg-amber-400 bg-red-400').addClass('bg-stone-200');
       $(`#tc-txt-${i}`).text('—');
-      $(`#tc-status-${i}`).text('DISABLED').removeClass('bg-emerald-50 text-emerald-700 bg-amber-50 text-amber-600 bg-red-50 text-red-600').addClass('bg-stone-100 text-stone-400');
-      return;
-    }
-
-    const scopeId    = i === 0 ? email : wallet;
-    const scopeLabel = i === 0 ? 'email' : 'wallet';
-    if (!scopeId) {
-      $(`#tc-scope-${i}`).text(`No ${scopeLabel} — not tracked`).addClass('italic text-stone-300').removeClass('text-stone-400');
-      $(`#tc-bar-${i}`).css('width','0%').removeClass('bg-emerald-400 bg-amber-400 bg-red-400').addClass('bg-stone-200');
-      $(`#tc-txt-${i}`).text(`Enter ${scopeLabel} to see usage`);
       $(`#tc-status-${i}`).text('NO SCOPE').removeClass('bg-emerald-50 text-emerald-700 bg-amber-50 text-amber-600 bg-red-50 text-red-600').addClass('bg-stone-100 text-stone-400');
-      return;
-    }
-    $(`#tc-scope-${i}`).text(scopeId).removeClass('italic text-stone-300').addClass('text-stone-500');
+    });
+    return;
+  }
 
-    // Use effective_max from resolved config; fall back to global max
-    let maxReq = tier.max_requests;
-    if (resolved) {
-      const rt = resolved.tiers.find(r => r.tier === tier.tier);
-      if (rt) maxReq = rt.effective_max;
-    }
+  try {
+    const params = new URLSearchParams();
+    if (email)  params.set('email',  email);
+    if (wallet) params.set('wallet', wallet);
+    const resp = await fetch(`${API_BASE}/apis/${encodeURIComponent(apiName)}/usage?${params}`);
+    if (!resp.ok) return;
+    const { data } = await resp.json();
 
-    const usageKey = `${apiName}|t${tier.tier}|${scopeId}`;
-    const used = getCurrentCount(u, usageKey, tier);
-    const pct  = maxReq > 0 ? Math.min(100, Math.round(used / maxReq * 100)) : 0;
-    const barColor = pct >= 100 ? 'bg-red-400' : pct >= 75 ? 'bg-amber-400' : 'bg-emerald-400';
+    data.forEach((u, i) => {
+      $(`#tc-scope-${i}`).text(u.scope_id || '—').removeClass('italic text-stone-300').addClass('text-stone-500');
+      const pct = u.limit > 0 ? Math.min(100, Math.round(u.used / u.limit * 100)) : 0;
+      const barColor = pct >= 100 ? 'bg-red-400' : pct >= 75 ? 'bg-amber-400' : 'bg-emerald-400';
+      $(`#tc-bar-${i}`).css('width', `${pct}%`).removeClass('bg-stone-200 bg-emerald-400 bg-amber-400 bg-red-400').addClass(barColor);
+      $(`#tc-txt-${i}`).text(`${u.used} / ${u.limit} requests · ${pct}% used`);
+      $(`#tc-win-${i}`).text(formatResetIn(u.reset_in) || u.window);
 
-    $(`#tc-bar-${i}`).css('width', `${pct}%`).removeClass('bg-stone-200 bg-emerald-400 bg-amber-400 bg-red-400').addClass(barColor);
-    $(`#tc-txt-${i}`).text(`${used} / ${maxReq} requests · ${pct}% used`);
-
-    let statusText = 'PASS';
-    let statusCls  = 'bg-emerald-50 text-emerald-700';
-    if (pct >= 100) {
-      statusText = tier.action_mode === 'enforce' ? 'BLOCKED' : 'AT LIMIT';
-      statusCls  = 'bg-red-50 text-red-600';
-    } else if (pct >= 75) {
-      statusText = 'NEAR LIMIT';
-      statusCls  = 'bg-amber-50 text-amber-600';
-    }
-
-    $(`#tc-status-${i}`).text(statusText)
-      .removeClass('bg-stone-100 text-stone-400 bg-emerald-50 text-emerald-700 bg-amber-50 text-amber-600 bg-red-50 text-red-600')
-      .addClass(statusCls);
-  });
+      let statusText = 'PASS', statusCls = 'bg-emerald-50 text-emerald-700';
+      if (pct >= 100)      { statusText = 'AT LIMIT';   statusCls = 'bg-red-50 text-red-600'; }
+      else if (pct >= 75)  { statusText = 'NEAR LIMIT'; statusCls = 'bg-amber-50 text-amber-600'; }
+      $(`#tc-status-${i}`).text(statusText)
+        .removeClass('bg-stone-100 text-stone-400 bg-emerald-50 text-emerald-700 bg-amber-50 text-amber-600 bg-red-50 text-red-600')
+        .addClass(statusCls);
+    });
+  } catch(e) { /* best-effort */ }
 }
 
 // ═══════════════════════════════════════════════
-//  FIRE REQUEST  (async — fetches resolved config for effective limits)
+//  FIRE REQUEST  (calls backend — real Redis increment)
 // ═══════════════════════════════════════════════
 async function fireRequest(apiName, email, wallet) {
-  let tiers;
-  try { tiers = await fetchTierConfig(apiName); }
-  catch(e) { return { allowed: false, tierResults: [] }; }
-
-  // Resolved config gives us effective_max after override in one round trip
-  let resolved = null;
-  if (wallet) {
-    try { resolved = await fetchWalletConfig(apiName, wallet); } catch(e) { /* use global limits */ }
+  try {
+    const resp = await fetch(`${API_BASE}/apis/${encodeURIComponent(apiName)}/check`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, wallet })
+    });
+    const data = await resp.json();
+    return { allowed: data.allowed ?? false, tierResults: data.tier_results ?? [] };
+  } catch(e) {
+    return { allowed: false, tierResults: [] };
   }
-
-  const u = getUsage();
-  const tierResults = [];
-  let allowed = true;
-
-  tiers.forEach((tier, i) => {
-    if (!tier.enabled) {
-      tierResults.push({ tier: tier.tier, scope: tier.scope, status: 'skipped', used: 0, limit: tier.max_requests, actionMode: tier.action_mode });
-      return;
-    }
-
-    const scopeId = i === 0 ? email : wallet;
-    if (!scopeId) {
-      tierResults.push({ tier: tier.tier, scope: tier.scope, status: 'skipped', used: 0, limit: tier.max_requests, actionMode: tier.action_mode });
-      return;
-    }
-
-    let maxReq = tier.max_requests;
-    if (resolved) {
-      const rt = resolved.tiers.find(r => r.tier === tier.tier);
-      if (rt) maxReq = rt.effective_max;
-    }
-
-    const usageKey = `${apiName}|t${tier.tier}|${scopeId}`;
-    const used = getCurrentCount(u, usageKey, tier);
-
-    if (tier.action_mode === 'enforce' && used >= maxReq) {
-      tierResults.push({ tier: tier.tier, scope: tier.scope, status: 'blocked', used, limit: maxReq, actionMode: tier.action_mode, scopeId });
-      allowed = false;
-    } else {
-      recordRequest(u, usageKey, tier);
-      const newUsed = getCurrentCount(u, usageKey, tier);
-      const status = (used >= maxReq && tier.action_mode === 'transparent') ? 'throttled' : 'pass';
-      tierResults.push({ tier: tier.tier, scope: tier.scope, status, used: newUsed, limit: maxReq, actionMode: tier.action_mode, scopeId });
-    }
-  });
-
-  saveUsage(u);
-  return { allowed, tierResults };
 }
 
 // ═══════════════════════════════════════════════
@@ -540,7 +432,7 @@ function prependLogEntry(n, apiName, email, wallet, result) {
   const tiers = tierCache[apiName] || [];
   const tierLines = result.tierResults.map(r => {
     if (r.status === 'skipped') {
-      return `<div>T${r.tier} ${r.scope} → <span class="${STATUS_CLS.skipped}">SKIP</span> (disabled)</div>`;
+      return `<div>T${r.tier} ${r.scope} → <span class="${STATUS_CLS.skipped}">SKIP</span></div>`;
     }
     const t = tiers[r.tier - 1];
     const winStr = t ? (t.unit === 'daily' ? 'today' : `in ${t.window}${({seconds:'s',minutes:'m',hours:'h'}[t.unit]||'')}`) : '';
@@ -620,12 +512,11 @@ async function runTest() {
 //  CLEAR ALL USAGE
 // ═══════════════════════════════════════════════
 async function clearAllUsage() {
-  localStorage.removeItem(USAGE_KEY);
-  resolvedCache = {}; // also clear resolved cache so tier cards re-fetch
+  resolvedCache = {};
   const apiName = $('#api-select').val();
   await buildTierStatusCards(apiName);
   await updateTierCards(apiName);
-  $('#tester-status').text('Usage cleared');
+  $('#tester-status').text('Refreshed');
 }
 
 // ═══════════════════════════════════════════════
@@ -691,10 +582,6 @@ $(async function() {
     await updateTierCards($('#api-select').val());
   }, 4000);
 
-  // Sync usage across tabs (index.html writes usage too)
-  window.addEventListener('storage', async (e) => {
-    if (e.key === USAGE_KEY) await updateTierCards($('#api-select').val());
-  });
 });
 </script>
 </body>

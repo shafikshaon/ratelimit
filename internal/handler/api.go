@@ -128,6 +128,56 @@ func (h *APIHandler) DeleteOverride(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// CheckRequest evaluates rate limits for an incoming request.
+// For tiers that are under the limit it atomically increments the Redis counter.
+// Returns 200 if allowed, 429 if blocked by any tier.
+func (h *APIHandler) CheckRequest(c *gin.Context) {
+	apiName := c.Param("name")
+
+	var req struct {
+		Email  string `json:"email"`
+		Wallet string `json:"wallet"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	result, err := h.tierRepo.Check(c.Request.Context(), apiName, req.Email, req.Wallet)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "check failed"})
+		return
+	}
+	if result == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "API not found"})
+		return
+	}
+
+	status := http.StatusOK
+	if !result.Allowed {
+		status = http.StatusTooManyRequests
+	}
+	c.JSON(status, result)
+}
+
+// GetUsage returns current Redis usage counters for all tiers of an API (read-only, single MGET).
+func (h *APIHandler) GetUsage(c *gin.Context) {
+	apiName := c.Param("name")
+	email := c.Query("email")
+	wallet := c.Query("wallet")
+
+	usage, err := h.tierRepo.GetUsage(c.Request.Context(), apiName, email, wallet)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch usage"})
+		return
+	}
+	if usage == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "API not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": usage})
+}
+
 // GetWalletConfig returns the resolved rate-limit config for a specific wallet+API pair.
 // Uses a single Redis MGET to fetch tier config and override in one round trip.
 // Override absence is negatively cached to avoid ScyllaDB on every request.

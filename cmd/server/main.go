@@ -77,6 +77,8 @@ func main() {
 		v1.POST("/apis/:name/overrides", apiHandler.CreateOverride)
 		v1.DELETE("/apis/:name/overrides/:wallet", apiHandler.DeleteOverride)
 		v1.GET("/apis/:name/config/:wallet", apiHandler.GetWalletConfig)
+		v1.POST("/apis/:name/check", apiHandler.CheckRequest)
+		v1.GET("/apis/:name/usage", apiHandler.GetUsage)
 	}
 
 	srv := &http.Server{
