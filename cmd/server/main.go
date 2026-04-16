@@ -21,9 +21,10 @@ import (
 func main() {
 	cfg := config.Load()
 
+	// PostgreSQL
 	db, err := database.NewPool(cfg)
 	if err != nil {
-		log.Fatalf("connect to database: %v", err)
+		log.Fatalf("connect to postgres: %v", err)
 	}
 	defer db.Close()
 
@@ -31,8 +32,35 @@ func main() {
 		log.Fatalf("run migrations: %v", err)
 	}
 
+	// Redis
+	redisClient, err := database.NewRedisClient(cfg)
+	if err != nil {
+		log.Fatalf("connect to redis: %v", err)
+	}
+	defer redisClient.Close()
+
+	// ScyllaDB
+	scyllaSession, err := database.NewScyllaSession(cfg)
+	if err != nil {
+		log.Fatalf("connect to scylla: %v", err)
+	}
+	defer scyllaSession.Close()
+
+	if err := database.InitScyllaSchema(scyllaSession, cfg.ScyllaKeyspace); err != nil {
+		log.Fatalf("init scylla schema: %v", err)
+	}
+
+	// Repositories — overrideRepo must be created first; tierRepo depends on it for MGET fallback
 	apiRepo := repository.NewAPIRepository(db)
-	apiHandler := handler.NewAPIHandler(apiRepo)
+	overrideRepo := repository.NewOverrideRepository(scyllaSession, cfg.ScyllaKeyspace, redisClient)
+	tierRepo := repository.NewTierRepository(db, redisClient, overrideRepo)
+
+	// Warm Redis cache for all APIs at startup
+	if err := warmTierCache(context.Background(), apiRepo, tierRepo); err != nil {
+		log.Printf("warn: tier cache warm-up failed: %v", err)
+	}
+
+	apiHandler := handler.NewAPIHandler(apiRepo, tierRepo, overrideRepo)
 
 	router := gin.Default()
 	router.Use(cors.Default())
@@ -43,9 +71,12 @@ func main() {
 	v1 := router.Group("/api/v1")
 	{
 		v1.GET("/apis", apiHandler.ListAPIs)
+		v1.GET("/apis/:name", apiHandler.GetAPI)
 		v1.PATCH("/apis/:name/tiers/:tier", apiHandler.UpdateTier)
+		v1.GET("/apis/:name/overrides", apiHandler.ListOverrides)
 		v1.POST("/apis/:name/overrides", apiHandler.CreateOverride)
 		v1.DELETE("/apis/:name/overrides/:wallet", apiHandler.DeleteOverride)
+		v1.GET("/apis/:name/config/:wallet", apiHandler.GetWalletConfig)
 	}
 
 	srv := &http.Server{

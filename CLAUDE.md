@@ -128,11 +128,23 @@ migrations/
 
 Migrations are idempotent (`ON CONFLICT DO NOTHING`) and run on every startup from `migrations/` in filename order.
 
+## Storage Architecture
+
+| Store | What lives there | Why |
+|-------|-----------------|-----|
+| **PostgreSQL** | `apis` (registry) + `api_tiers` (tier config source of truth) | Durable, transactional |
+| **Redis** | Read-through cache for tier configs (`rl:config:{api_name}`) | Fast reads; invalidated on write |
+| **ScyllaDB** | Per-wallet overrides (`ratelimit.api_overrides`) | Partition key = `api_name`; supports millions of rows + native cursor pagination |
+
+On startup the app warms the Redis cache for every API in PostgreSQL. A tier `PATCH` writes to PostgreSQL then deletes the Redis key so the next read is fresh.
+
+Override pagination uses ScyllaDB page-state tokens (base64-encoded), not offset. Requests: `GET /api/v1/apis/:name/overrides?limit=20&page_token=<token>`.
+
 ## Tech Stack
 
-**Backend:** Go 1.23 · Gin · pgx/v5 · Air (hot-reload)  
+**Backend:** Go 1.23 · Gin · pgx/v5 · go-redis/v9 · gocql · Air (hot-reload)  
 **Frontend:** Vanilla JavaScript (ES6) + jQuery 3.7.1 · Tailwind CSS (CDN)  
-**Infrastructure:** PostgreSQL 16 · Docker Compose
+**Infrastructure:** PostgreSQL 16 · Redis 7 · ScyllaDB 5.4 · Docker Compose
 
 ## Backend Integration (Not Yet Implemented)
 

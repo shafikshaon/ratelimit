@@ -21,12 +21,41 @@ type Override struct {
 	Reason string `json:"reason"`
 }
 
+type OverridePage struct {
+	Data          []Override `json:"data"`
+	NextPageToken string     `json:"next_page_token,omitempty"`
+	HasMore       bool       `json:"has_more"`
+}
+
+// ResolvedTier is one tier with both the global limit and the wallet-effective limit.
+type ResolvedTier struct {
+	Tier         int    `json:"tier"`
+	Scope        string `json:"scope"`
+	RedisKey     string `json:"redis_key"`
+	Window       *int   `json:"window,omitempty"`
+	Unit         string `json:"unit"`
+	GlobalMax    int    `json:"global_max"`
+	EffectiveMax int    `json:"effective_max"`
+	Overridden   bool   `json:"overridden"`
+	ActionMode   string `json:"action_mode"`
+	Enabled      bool   `json:"enabled"`
+	ResetHour    int    `json:"reset_hour"`
+}
+
+// ResolvedConfig is the full, wallet-resolved configuration for one API.
+// Fetched via a single Redis MGET; ScyllaDB consulted only on cache miss.
+type ResolvedConfig struct {
+	API    string         `json:"api"`
+	Wallet string         `json:"wallet"`
+	Tiers  []ResolvedTier `json:"tiers"`
+}
+
+// API is used for both the list endpoint (Tiers omitted) and the detail endpoint.
 type API struct {
-	ID        int        `json:"id"`
-	Name      string     `json:"name"`
-	GroupName string     `json:"group"`
-	Tiers     []Tier     `json:"tiers"`
-	Overrides []Override `json:"overrides"`
+	ID        int    `json:"id"`
+	Name      string `json:"name"`
+	GroupName string `json:"group"`
+	Tiers     []Tier `json:"tiers,omitempty"`
 }
 
 type APIGroup struct {

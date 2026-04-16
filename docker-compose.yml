@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -15,6 +15,33 @@ services:
       timeout: 5s
       retries: 10
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  scylla:
+    image: scylladb/scylla:6.2
+    command: --developer-mode=1 --overprovisioned=1 --smp=1
+    ports:
+      - "9042:9042"
+    volumes:
+      - scylla_data:/var/lib/scylla
+    healthcheck:
+      test: ["CMD-SHELL", "nodetool status | grep -q UN"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 90s
+
   app:
     build: .
     ports:
@@ -26,6 +53,9 @@ services:
       DB_PASSWORD: postgres
       DB_NAME: ratelimit
       DB_SSLMODE: disable
+      REDIS_ADDR: redis:6379
+      SCYLLA_HOSTS: scylla
+      SCYLLA_KEYSPACE: ratelimit
       SERVER_PORT: 8080
     volumes:
       - .:/app
@@ -34,8 +64,14 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+      scylla:
+        condition: service_healthy
 
 volumes:
   postgres_data:
+  redis_data:
+  scylla_data:
   go_modules:
   go_cache:

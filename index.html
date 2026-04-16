@@ -8,127 +8,124 @@
   <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
   <style>
     /* Toggle switch */
-    .toggle-sw { position: relative; display: inline-flex; width: 42px; height: 24px; cursor: pointer; flex-shrink: 0; }
+    .toggle-sw { position: relative; display: inline-flex; width: 36px; height: 20px; cursor: pointer; flex-shrink: 0; }
     .toggle-sw input { opacity: 0; width: 0; height: 0; position: absolute; }
-    .toggle-track { position: absolute; inset: 0; background: #d1d5db; border-radius: 99px; transition: background 0.2s; }
-    .toggle-thumb { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; background: white; border-radius: 50%; transition: transform 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.25); }
+    .toggle-track { position: absolute; inset: 0; background: #44403c; border-radius: 99px; transition: background 0.2s; }
+    .toggle-thumb { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background: #a8a29e; border-radius: 50%; transition: transform 0.2s, background 0.2s; }
     .toggle-sw input:checked ~ .toggle-track { background: #f59e0b; }
-    .toggle-sw input:checked ~ .toggle-thumb { transform: translateX(18px); }
+    .toggle-sw input:checked ~ .toggle-thumb { transform: translateX(16px); background: white; }
     /* Scrollbar */
-    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 9px; }
-    ::-webkit-scrollbar-thumb:hover { background: #d1d5db; }
+    ::-webkit-scrollbar-thumb { background: #44403c; border-radius: 9px; }
+    ::-webkit-scrollbar-thumb:hover { background: #57534e; }
+    /* Sidebar scrollbar */
+    #api-list::-webkit-scrollbar-thumb { background: #d6d3d1; }
     /* API panel slide transition */
     #api-panel { transition: transform 0.25s cubic-bezier(.4,0,.2,1); }
     /* Font */
     body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif; }
+    /* Select arrow on dark bg */
+    .select-dark { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23a8a29e' stroke-width='2'%3E%3Cpolyline points='6,9 12,15 18,9'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; }
+    /* Tier card input focus ring */
+    .tier-input:focus { outline: none; box-shadow: 0 0 0 2px #f59e0b40, 0 0 0 1px #f59e0b; }
+    /* Smooth hover transitions */
+    .api-item { transition: background 0.12s ease; }
+    .action-btn { transition: background 0.12s ease, color 0.12s ease; }
   </style>
 </head>
 
-<body class="bg-[#edeae4] text-gray-900 antialiased h-screen overflow-hidden">
+<body class="bg-stone-100 text-stone-900 antialiased h-screen overflow-hidden">
 
-<!-- ════════════════════════════════════════════
-     PAGE WRAPPER  (container spacing l/r)
-════════════════════════════════════════════ -->
-<div class="h-screen flex flex-col px-4 sm:px-6 lg:px-10 py-4 gap-3">
+<!-- Toast notification -->
+<div id="toast"
+  class="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg text-xs font-semibold
+         flex items-center gap-2 opacity-0 pointer-events-none transition-opacity duration-300 shadow-lg"
+  style="min-width:180px">
+</div>
 
-  <!-- ── HEADER ── -->
-  <header class="bg-[#faf8f5] border border-stone-200/80 rounded-2xl flex-shrink-0 shadow-sm">
-    <div class="px-5 h-14 flex items-center gap-3">
+<!-- ═══════════════════════════════════
+     PAGE WRAPPER
+═══════════════════════════════════ -->
+<div class="h-screen flex flex-col">
 
-      <!-- Logo mark -->
-      <div class="flex items-center gap-2.5 mr-2">
-        <div class="w-7 h-7 rounded-lg bg-amber-500 flex items-center justify-center text-white font-bold text-[11px] flex-shrink-0">RL</div>
-        <span class="font-bold text-sm text-stone-800 hidden sm:block">RateLimiter</span>
+  <!-- ── SPLIT HEADER ── -->
+  <header class="flex flex-shrink-0 h-12 border-b border-stone-200">
+
+    <!-- Left: brand strip -->
+    <div class="w-56 flex-shrink-0 bg-white flex items-center gap-2.5 px-4 border-r border-stone-200">
+      <div class="w-6 h-6 rounded-md bg-amber-500 flex items-center justify-center text-white font-bold text-[10px] flex-shrink-0">RL</div>
+      <span class="font-bold text-sm text-stone-900 tracking-tight">RateLimiter</span>
+    </div>
+
+    <!-- Right: light strip -->
+    <div class="flex-1 bg-white flex items-center px-5 gap-3">
+      <div class="flex-1 min-w-0">
+        <span class="font-semibold text-sm text-stone-800">Rate Limit Configuration</span>
+        <span class="hidden sm:inline text-stone-400 text-xs ml-2">Per-API independent tiers &middot; Wallet + Email scoped</span>
       </div>
-
-      <div class="w-px h-5 bg-stone-200 flex-shrink-0"></div>
-
-      <!-- Title -->
-      <div class="flex-1 min-w-0 pl-1">
-        <h1 class="font-bold text-sm sm:text-base text-stone-900 leading-tight truncate">API rate limit configuration</h1>
-        <p class="text-[11px] text-stone-400 hidden sm:block leading-tight">Per-API independent tiers &middot; Wallet + Email scoped &middot; Redis + DynamoDB</p>
-      </div>
-
-      <!-- Actions -->
-      <div class="flex items-center gap-2 flex-shrink-0">
+      <div class="flex items-center gap-2">
+        <!-- Mobile sidebar toggle -->
+        <button id="api-panel-toggle"
+          class="md:hidden p-1.5 rounded-md text-stone-500 hover:bg-stone-100 transition-colors">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>
+          </svg>
+        </button>
         <a href="tester.html" target="_blank"
-          class="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-stone-700 border border-stone-300 hover:bg-stone-100 rounded-lg transition-colors">
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-stone-600 border border-stone-200 hover:border-stone-300 hover:bg-stone-50 rounded-md transition-colors">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15,3 21,3 21,9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
           Tester
         </a>
         <button id="save-btn"
-          class="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-amber-500 hover:bg-amber-600 rounded-lg transition-colors">
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-amber-500 hover:bg-amber-600 rounded-md transition-colors">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v14a2 2 0 01-2 2z"/><polyline points="17,21 17,13 7,13 7,21"/><polyline points="7,3 7,8 15,8"/></svg>
-          Save config
-        </button>
-        <!-- API panel toggle (mobile) -->
-        <button id="api-panel-toggle"
-          class="md:hidden p-1.5 rounded-lg text-stone-500 hover:bg-stone-100 transition-colors flex-shrink-0">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>
-          </svg>
+          Save
         </button>
       </div>
     </div>
   </header>
 
-  <!-- Toast notification -->
-  <div id="toast"
-    class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl text-xs font-semibold
-           flex items-center gap-2 shadow-lg opacity-0 pointer-events-none transition-opacity duration-300"
-    style="min-width:200px">
-  </div>
-
   <!-- ── BODY ── -->
-  <div class="flex flex-1 overflow-hidden gap-3 min-h-0">
+  <div class="flex flex-1 overflow-hidden min-h-0 bg-stone-100 p-3 gap-3">
 
-    <!-- ── API BROWSER SIDEBAR ── -->
-    <aside id="api-panel"
-      class="fixed md:relative inset-y-0 left-0 z-30 w-56 md:w-52 lg:w-56
-             bg-[#faf8f5] border border-stone-200/80 rounded-2xl shadow-sm flex flex-col flex-shrink-0
-             -translate-x-full md:translate-x-0">
+    <!-- ── SIDEBAR CONTAINER ── -->
+    <div class="fixed md:relative inset-y-3 left-3 z-30 w-56 flex-shrink-0 -translate-x-[calc(100%+12px)] md:translate-x-0 flex flex-col" id="api-panel">
+      <aside class="flex-1 flex flex-col bg-white border border-stone-200 rounded-xl overflow-hidden shadow-sm">
 
-      <!-- Section label -->
-      <div class="px-4 pt-3.5 pb-2 flex-shrink-0">
-        <p class="text-[10px] font-semibold uppercase tracking-widest text-stone-400">Select API</p>
-      </div>
-
-      <!-- Search -->
-      <div class="px-3 pb-2 flex-shrink-0">
-        <div class="relative">
-          <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-stone-400 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-          <input id="api-search" type="text" placeholder="Search APIs…"
-            class="w-full pl-8 pr-3 py-2 text-xs border border-stone-200 rounded-lg bg-stone-100/60 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent placeholder-stone-400" />
+        <!-- Search -->
+        <div class="px-3 pt-3 pb-2 flex-shrink-0">
+          <div class="relative">
+            <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-stone-400 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <input id="api-search" type="text" placeholder="Search APIs"
+              class="w-full pl-8 pr-3 py-1.5 text-xs bg-stone-50 border border-stone-200 text-stone-700 rounded-md focus:outline-none focus:border-amber-400 placeholder-stone-400" />
+          </div>
         </div>
-      </div>
 
-      <!-- API list -->
-      <div id="api-list" class="flex-1 overflow-y-auto pb-4"></div>
-    </aside>
+        <!-- API list -->
+        <div id="api-list" class="flex-1 overflow-y-auto pb-3 mt-1"></div>
 
-    <!-- API panel overlay (mobile) -->
-    <div id="api-overlay" class="fixed inset-0 bg-black/40 z-20 hidden md:hidden"></div>
+        <!-- Footer -->
+        <div class="px-4 py-2.5 border-t border-stone-100 flex-shrink-0">
+          <p id="footer-saved" class="text-[10px] text-stone-400 hidden">
+            <span class="text-emerald-500 font-medium">Saved</span>
+          </p>
+          <p class="text-[10px] text-stone-400">Redis + ScyllaDB</p>
+        </div>
+      </aside>
+    </div>
+
+    <!-- Overlay (mobile) -->
+    <div id="api-overlay" class="fixed inset-0 bg-black/50 z-20 hidden md:hidden"></div>
 
     <!-- ── MAIN CONTENT ── -->
-    <main id="main-content" class="flex-1 overflow-y-auto bg-[#edeae4] rounded-2xl min-w-0">
-      <div class="max-w-5xl mx-auto px-4 sm:px-6 py-5 space-y-4">
+    <main id="main-content" class="flex-1 overflow-y-auto min-w-0">
+      <div class="max-w-5xl mx-auto space-y-4">
         <!-- populated by JS -->
       </div>
     </main>
 
   </div>
-
-  <!-- ── FOOTER ── -->
-  <footer class="bg-[#faf8f5] border border-stone-200/80 rounded-2xl flex-shrink-0 shadow-sm">
-    <div class="px-5 py-3 flex items-center justify-between gap-4">
-      <p class="text-[11px] text-stone-400">Per-API independent tiers &middot; Wallet + Email scoped &middot; Redis + DynamoDB</p>
-      <p id="footer-saved" class="text-[11px] text-stone-400 hidden">
-        <span class="text-emerald-600 font-medium">&#10003; Saved</span>
-      </p>
-    </div>
-  </footer>
 
 </div><!-- /page wrapper -->
 
@@ -183,37 +180,43 @@ function getWindowRemaining(tier) {
 // ═══════════════════════════════════════════════
 //  STATE
 // ═══════════════════════════════════════════════
-let config = { apis: {}, overrides: {} };
-let apiGroups = [];
+let apiGroups       = [];   // [{name, count, apis:[{id,name,group}]}]
+let tierCache       = {};   // { apiName: [tier,...] }  — cached after first fetch
+let resolvedCache   = {};   // { "apiName|wallet": ResolvedConfig } — MGET result cache
 let selectedApiName = null;
-const patchTimers = {};
+const patchTimers   = {};
 
 // ═══════════════════════════════════════════════
 //  API CALLS
 // ═══════════════════════════════════════════════
-async function loadConfig() {
+
+// Fetch grouped API list (no tiers, no overrides)
+async function fetchAPIList() {
   const res = await fetch(`${API_BASE}/apis`);
-  if (!res.ok) throw new Error('Failed to load config');
+  if (!res.ok) throw new Error('Failed to load API list');
   const json = await res.json();
   apiGroups = json.data || [];
-  config = { apis: {}, overrides: {} };
-  for (const g of apiGroups) {
-    for (const api of g.apis) {
-      config.apis[api.name] = { group: api.group, tiers: api.tiers };
-      config.overrides[api.name] = api.overrides || [];
-    }
-  }
   if (!selectedApiName && apiGroups.length && apiGroups[0].apis.length) {
     selectedApiName = apiGroups[0].apis[0].name;
   }
 }
 
-// Debounced PATCH — reads current in-memory tier state when timer fires
+// Fetch tier config for one API (cached in tierCache)
+async function fetchTiers(apiName) {
+  if (tierCache[apiName]) return tierCache[apiName];
+  const res = await fetch(`${API_BASE}/apis/${encodeURIComponent(apiName)}`);
+  if (!res.ok) throw new Error('Failed to load API config');
+  const json = await res.json();
+  tierCache[apiName] = json.data.tiers || [];
+  return tierCache[apiName];
+}
+
+// Debounced PATCH — writes to PostgreSQL and invalidates Redis cache server-side
 function schedulePatch(apiName, tierNum) {
   const key = `${apiName}:${tierNum}`;
   clearTimeout(patchTimers[key]);
   patchTimers[key] = setTimeout(async () => {
-    const tier = config.apis[apiName]?.tiers.find(t => t.tier === tierNum);
+    const tier = (tierCache[apiName] || []).find(t => t.tier === tierNum);
     if (!tier) return;
     try {
       const res = await fetch(`${API_BASE}/apis/${encodeURIComponent(apiName)}/tiers/${tierNum}`, {
@@ -222,6 +225,8 @@ function schedulePatch(apiName, tierNum) {
         body: JSON.stringify(tier),
       });
       if (!res.ok) throw new Error();
+      // Invalidate local cache so next click re-fetches fresh data
+      delete tierCache[apiName];
       showToast('Saved', 'ok');
     } catch {
       showToast('Failed to save tier', 'error');
@@ -249,6 +254,31 @@ async function apiDeleteOverride(apiName, wallet) {
   if (!res.ok) throw new Error('Failed to remove override');
 }
 
+async function fetchOverridePage(apiName, pageToken, limit = 20) {
+  let url = `${API_BASE}/apis/${encodeURIComponent(apiName)}/overrides?limit=${limit}`;
+  if (pageToken) url += `&page_token=${encodeURIComponent(pageToken)}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Failed to fetch overrides');
+  return res.json(); // { data, next_page_token, has_more }
+}
+
+// Single Redis MGET round trip: returns ResolvedConfig with effective_max per tier.
+// Results are cached in resolvedCache for the duration of the page.
+async function fetchWalletConfig(apiName, wallet) {
+  const cacheKey = `${apiName}|${wallet}`;
+  if (resolvedCache[cacheKey]) return resolvedCache[cacheKey];
+  const res = await fetch(`${API_BASE}/apis/${encodeURIComponent(apiName)}/config/${encodeURIComponent(wallet)}`);
+  if (!res.ok) throw new Error('Failed to fetch wallet config');
+  const data = await res.json(); // ResolvedConfig
+  resolvedCache[cacheKey] = data;
+  return data;
+}
+
+// Invalidate resolved config cache for a wallet (call after override create/delete)
+function invalidateWalletConfig(apiName, wallet) {
+  delete resolvedCache[`${apiName}|${wallet}`];
+}
+
 // ═══════════════════════════════════════════════
 //  BADGE HELPERS
 // ═══════════════════════════════════════════════
@@ -261,6 +291,7 @@ const TIER_BADGE  = ['bg-blue-100 text-blue-800', 'bg-amber-100 text-amber-800',
 const SCOPE_BADGE = { email: 'bg-pink-100 text-pink-700', wallet: 'bg-amber-100 text-amber-700' };
 
 function computeStatus(tiers) {
+  if (!tiers || !tiers.length) return 'transparent';
   const modes = [...new Set(tiers.map(t => t.action_mode))];
   return modes.length === 1 ? modes[0] : 'mixed';
 }
@@ -301,30 +332,29 @@ function renderSidebar(filter) {
     if (!filtered.length) continue;
 
     const $group = $('<div>');
-    $('<p>').addClass('px-4 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-stone-400')
+    $('<p>').addClass('px-4 pt-3 pb-1 text-[9px] font-bold uppercase tracking-widest text-stone-400')
       .text(`${group.name} (${filtered.length})`).appendTo($group);
 
     filtered.forEach(item => {
-      const apiCfg = config.apis[item.name];
-      const status = apiCfg ? computeStatus(apiCfg.tiers) : 'transparent';
+      const status = computeStatus(tierCache[item.name]);
       const isActive = selectedApiName === item.name;
 
       const $item = $('<div>')
-        .addClass(`flex items-center justify-between gap-2 mx-2 px-2 py-1.5 rounded-lg cursor-pointer transition-colors ${isActive ? 'bg-amber-50' : 'hover:bg-stone-100'}`)
+        .addClass(`api-item flex items-center justify-between gap-2 mx-2 px-2.5 py-1.5 rounded-md cursor-pointer ${isActive ? 'bg-amber-50' : 'hover:bg-stone-50'}`)
         .data('name', item.name);
 
       const $left = $('<div>').addClass('flex items-center gap-2 min-w-0');
-      $('<div>').addClass(`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isActive ? 'bg-amber-500' : 'bg-stone-300'}`).appendTo($left);
+      $('<div>').addClass(`w-1 h-1 rounded-full flex-shrink-0 ${isActive ? 'bg-amber-500' : 'bg-stone-300'}`).appendTo($left);
       $('<span>').addClass(`text-xs truncate ${isActive ? 'font-semibold text-amber-700' : 'text-stone-600'}`).text(item.name).appendTo($left);
       $left.appendTo($item);
 
-      $('<span>').addClass(`text-[10px] font-medium px-1.5 py-0.5 rounded-full flex-shrink-0 ${STATUS_BADGE[status] || STATUS_BADGE.transparent}`)
+      $('<span>').addClass(`text-[9px] font-semibold px-1.5 py-0.5 rounded flex-shrink-0 ${STATUS_BADGE[status] || STATUS_BADGE.transparent}`)
         .text(status).appendTo($item);
 
-      $item.on('click', function() {
+      $item.on('click', async function() {
         selectedApiName = $(this).data('name');
         renderSidebar($('#api-search').val());
-        renderMain();
+        await renderMain();
         if (window.innerWidth < 768) closeApiPanel();
       });
 
@@ -338,14 +368,14 @@ function renderSidebar(filter) {
 // ═══════════════════════════════════════════════
 //  RENDER MAIN
 // ═══════════════════════════════════════════════
-function renderMain() {
+async function renderMain() {
   const $wrap = $('#main-content .max-w-5xl').empty();
 
-  if (!selectedApiName || !config.apis[selectedApiName]) {
+  if (!selectedApiName) {
     $wrap.append(`
       <div class="flex flex-col items-center justify-center py-24 text-center">
-        <div class="w-14 h-14 bg-white rounded-2xl flex items-center justify-center mb-4 shadow-sm border border-stone-200">
-          <svg class="w-6 h-6 text-stone-300" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        <div class="w-12 h-12 bg-white rounded-xl flex items-center justify-center mb-4 border border-stone-200">
+          <svg class="w-5 h-5 text-stone-300" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
         </div>
         <p class="text-sm font-semibold text-stone-500">Select an API to configure</p>
         <p class="text-xs text-stone-400 mt-1">Choose from the panel on the left</p>
@@ -353,43 +383,59 @@ function renderMain() {
     return;
   }
 
-  const apiCfg = config.apis[selectedApiName];
-  const tiers  = apiCfg.tiers;
+  // Show loading skeleton while fetching tiers
+  if (!tierCache[selectedApiName]) {
+    $wrap.append(`<div class="flex items-center justify-center py-24 text-stone-400 text-sm gap-2">
+      <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+      Loading config…
+    </div>`);
+    try {
+      await fetchTiers(selectedApiName);
+    } catch(e) {
+      $wrap.empty().append(`<div class="text-center py-24 text-red-400 text-sm">Failed to load config</div>`);
+      return;
+    }
+    $wrap.empty();
+  }
+
+  const tiers = tierCache[selectedApiName] || [];
 
   // ── Title card ──
   const redisKeys = tiers.map(t =>
-    `<span class="inline-block font-mono text-[10.5px] text-stone-500 bg-stone-100 border border-stone-200 rounded-lg px-2 py-0.5">${t.redis_key}</span>`
+    `<span class="inline-block font-mono text-[10px] text-stone-500 bg-stone-100 border border-stone-200 rounded px-2 py-0.5">${t.redis_key}</span>`
   ).join('');
   $wrap.append(`
-    <div class="bg-white border border-stone-200/80 rounded-2xl px-5 py-4 shadow-sm">
-      <h2 class="font-bold text-lg text-stone-900 mb-2">${selectedApiName}</h2>
+    <div class="bg-white border border-stone-200 rounded-xl px-4 py-3">
+      <div class="flex items-center gap-3 mb-2">
+        <h2 class="font-bold text-base text-stone-900">${selectedApiName}</h2>
+      </div>
       <div class="flex flex-wrap gap-1.5">${redisKeys}</div>
     </div>`);
 
   // ── Live usage preview bar ──
   const $usageBar = $(`
-    <div class="bg-white border border-stone-200/80 rounded-2xl px-5 py-3 shadow-sm flex flex-wrap items-center gap-3">
-      <div class="flex items-center gap-1.5 text-xs font-semibold text-stone-500 flex-shrink-0">
-        <svg class="w-3.5 h-3.5 text-stone-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+    <div class="bg-white border border-stone-200 rounded-xl px-4 py-2.5 flex flex-wrap items-center gap-3">
+      <div class="flex items-center gap-1.5 text-xs font-medium text-stone-500 flex-shrink-0">
+        <svg class="w-3.5 h-3.5 text-amber-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/>
         </svg>
-        Live usage preview
+        Live usage
       </div>
       <div class="flex items-center gap-2 flex-1 flex-wrap">
         <div class="flex items-center gap-1.5">
-          <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 flex-shrink-0">T1</span>
+          <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 flex-shrink-0">T1</span>
           <div class="relative">
             <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-stone-400 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
-            <input id="preview-email" type="email" placeholder="Email for Tier 1…"
-              class="pl-7 pr-3 py-1.5 text-xs border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 bg-stone-50 w-44 placeholder-stone-400" />
+            <input id="preview-email" type="email" placeholder="Email for Tier 1"
+              class="pl-7 pr-3 py-1.5 text-xs border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-400 bg-stone-50 w-44 placeholder-stone-400" />
           </div>
         </div>
         <div class="flex items-center gap-1.5">
-          <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 flex-shrink-0">T2/T3</span>
+          <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 flex-shrink-0">T2/T3</span>
           <div class="relative">
             <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-stone-400 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/></svg>
-            <input id="preview-wallet" type="text" placeholder="Wallet for Tier 2 & 3…"
-              class="pl-7 pr-3 py-1.5 text-xs border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 bg-stone-50 w-48 placeholder-stone-400" />
+            <input id="preview-wallet" type="text" placeholder="Wallet for Tier 2 &amp; 3"
+              class="pl-7 pr-3 py-1.5 text-xs border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-400 bg-stone-50 w-44 placeholder-stone-400" />
           </div>
         </div>
       </div>
@@ -400,7 +446,7 @@ function renderMain() {
   $usageBar.find('#preview-email, #preview-wallet').on('input', () => refreshUsageOnCards(selectedApiName));
 
   // ── Tier cards ──
-  const $grid = $('<div>').addClass('grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4');
+  const $grid = $('<div>').addClass('grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3');
   tiers.forEach((t, i) => $grid.append(buildTierCard(t, i)));
   $wrap.append($grid);
 
@@ -416,63 +462,67 @@ function buildTierCard(t, idx) {
 
   const windowField = isDaily ? `
     <div class="space-y-1">
-      <label class="text-[11px] font-medium text-stone-500">Reset hour (0-23)</label>
+      <label class="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">Reset hour (0-23)</label>
       <input data-field="reset_hour" type="number" min="0" max="23" value="${t.reset_hour ?? 0}"
-        class="w-full px-3 py-2 text-sm font-semibold border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white" />
+        class="tier-input w-full px-2.5 py-1.5 text-xs font-semibold border border-stone-200 rounded-md bg-white" />
     </div>
     <div class="space-y-1">
-      <label class="text-[11px] font-medium text-stone-500">Window</label>
+      <label class="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">Window</label>
       <div class="relative">
         <select data-field="window_daily"
-          class="w-full px-3 py-2 text-sm font-semibold border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white appearance-none pr-8">
+          class="tier-input w-full px-2.5 py-1.5 text-xs font-semibold border border-stone-200 rounded-md bg-white appearance-none pr-7">
           <option selected>24h fixed daily</option>
           <option>12h fixed</option>
         </select>
-        <svg class="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-stone-400 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6,9 12,15 18,9"/></svg>
+        <svg class="absolute right-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-stone-400 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6,9 12,15 18,9"/></svg>
       </div>
     </div>` : `
     <div class="space-y-1">
-      <label class="text-[11px] font-medium text-stone-500">Window</label>
+      <label class="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">Window</label>
       <input data-field="window" type="number" min="1" value="${t.window ?? 10}"
-        class="w-full px-3 py-2 text-sm font-semibold border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white" />
+        class="tier-input w-full px-2.5 py-1.5 text-xs font-semibold border border-stone-200 rounded-md bg-white" />
     </div>
     <div class="space-y-1">
-      <label class="text-[11px] font-medium text-stone-500">Unit</label>
+      <label class="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">Unit</label>
       <div class="relative">
         <select data-field="unit"
-          class="w-full px-3 py-2 text-sm font-semibold border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white appearance-none pr-8">
+          class="tier-input w-full px-2.5 py-1.5 text-xs font-semibold border border-stone-200 rounded-md bg-white appearance-none pr-7">
           ${['seconds','minutes','hours'].map(u => `<option ${u===t.unit?'selected':''}>${u}</option>`).join('')}
         </select>
-        <svg class="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-stone-400 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6,9 12,15 18,9"/></svg>
+        <svg class="absolute right-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-stone-400 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6,9 12,15 18,9"/></svg>
       </div>
     </div>`;
 
   const $card = $(`
-    <div class="bg-white border border-stone-200/80 rounded-2xl p-4 shadow-sm flex flex-col gap-3.5">
+    <div class="bg-white border border-stone-200 rounded-xl p-4 flex flex-col gap-3">
+      <!-- Tier header -->
       <div class="flex items-center gap-2">
-        <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full ${TIER_BADGE[idx]}">Tier ${t.tier}</span>
-        <span class="text-[11px] font-medium px-2 py-0.5 rounded-full ${SCOPE_BADGE[t.scope]||'bg-stone-100 text-stone-600'}">${t.scope}</span>
+        <span class="text-[10px] font-bold px-2 py-0.5 rounded ${TIER_BADGE[idx]}">Tier ${t.tier}</span>
+        <span class="text-[10px] font-semibold px-2 py-0.5 rounded ${SCOPE_BADGE[t.scope]||'bg-stone-100 text-stone-600'}">${t.scope}</span>
       </div>
-      <div class="font-mono text-[10.5px] text-stone-500 bg-stone-50 border border-stone-100 rounded-xl px-3 py-2 break-all leading-relaxed">${t.redis_key}</div>
+      <!-- Redis key -->
+      <div class="font-mono text-[9.5px] text-stone-400 bg-stone-50 border border-stone-100 rounded-md px-2.5 py-1.5 break-all leading-relaxed">${t.redis_key}</div>
       ${windowField}
       <div class="space-y-1">
-        <label class="text-[11px] font-medium text-stone-500">Max requests</label>
+        <label class="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">Max requests</label>
         <input data-field="max_requests" type="number" min="1" value="${t.max_requests}"
-          class="w-full px-3 py-2 text-sm font-semibold border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white" />
+          class="tier-input w-full px-2.5 py-1.5 text-xs font-semibold border border-stone-200 rounded-md bg-white" />
       </div>
+      <!-- Action mode -->
       <div class="space-y-1">
-        <label class="text-[11px] font-medium text-stone-500">Action mode</label>
-        <div class="flex border border-stone-200 rounded-xl overflow-hidden">
-          <button class="action-btn flex-1 py-2 text-xs transition-colors
-            ${t.action_mode==='transparent' ? 'bg-amber-50 text-amber-700 font-semibold' : 'bg-white text-stone-500 hover:bg-stone-50'}"
+        <label class="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">Action mode</label>
+        <div class="flex border border-stone-200 rounded-md overflow-hidden">
+          <button class="action-btn flex-1 py-1.5 text-xs
+            ${t.action_mode==='transparent' ? 'bg-amber-500 text-white font-semibold' : 'bg-white text-stone-500 hover:bg-stone-50'}"
             data-mode="transparent">Transparent</button>
-          <button class="action-btn flex-1 py-2 text-xs border-l border-stone-200 transition-colors
-            ${t.action_mode==='enforce' ? 'bg-amber-50 text-amber-700 font-semibold' : 'bg-white text-stone-500 hover:bg-stone-50'}"
+          <button class="action-btn flex-1 py-1.5 text-xs border-l border-stone-200
+            ${t.action_mode==='enforce' ? 'bg-amber-500 text-white font-semibold' : 'bg-white text-stone-500 hover:bg-stone-50'}"
             data-mode="enforce">Enforce</button>
         </div>
       </div>
-      <div class="flex items-center justify-between pt-1 border-t border-stone-100">
-        <span class="text-xs font-medium text-stone-600">Enabled</span>
+      <!-- Enabled toggle -->
+      <div class="flex items-center justify-between pt-2 border-t border-stone-100">
+        <span class="text-xs text-stone-500">Enabled</span>
         <label class="toggle-sw">
           <input type="checkbox" ${t.enabled ? 'checked' : ''} />
           <div class="toggle-track"></div>
@@ -481,7 +531,7 @@ function buildTierCard(t, idx) {
       </div>
     </div>`);
 
-  function tierRef() { return config.apis[selectedApiName].tiers[idx]; }
+  function tierRef() { return tierCache[selectedApiName][idx]; }
 
   $card.find('[data-field="window"]').on('input', function() {
     tierRef().window = Math.max(1, parseInt($(this).val()) || 1);
@@ -504,8 +554,8 @@ function buildTierCard(t, idx) {
     const mode = $(this).data('mode');
     tierRef().action_mode = mode;
     schedulePatch(selectedApiName, t.tier);
-    $card.find('.action-btn').removeClass('bg-amber-50 text-amber-700 font-semibold').addClass('bg-white text-stone-500');
-    $(this).removeClass('bg-white text-stone-500').addClass('bg-amber-50 text-amber-700 font-semibold');
+    $card.find('.action-btn').removeClass('bg-amber-500 text-white font-semibold').addClass('bg-white text-stone-500');
+    $(this).removeClass('bg-white text-stone-500').addClass('bg-amber-500 text-white font-semibold');
     renderSidebar($('#api-search').val());
   });
 
@@ -517,9 +567,9 @@ function buildTierCard(t, idx) {
   // ── Usage display ──
   const $usageSection = $('<div>').addClass('pt-2.5 border-t border-stone-100 space-y-1.5')
     .attr('data-usage-idx', idx);
-  $('<p>').addClass('text-[10px] font-semibold uppercase tracking-wide text-stone-400').text('Usage').appendTo($usageSection);
-  const $barTrack = $('<div>').addClass('w-full bg-stone-100 rounded-full h-1.5').appendTo($usageSection);
-  $('<div>').addClass('h-1.5 rounded-full transition-all duration-500 bg-stone-200').css('width','0%')
+  $('<p>').addClass('text-[9px] font-bold uppercase tracking-widest text-stone-400').text('Usage').appendTo($usageSection);
+  const $barTrack = $('<div>').addClass('w-full bg-stone-100 rounded-full h-1').appendTo($usageSection);
+  $('<div>').addClass('h-1 rounded-full transition-all duration-500 bg-stone-200').css('width','0%')
     .attr('id', `ubar-${idx}`).appendTo($barTrack);
   $('<p>').addClass('text-[10px] text-stone-400').attr('id', `utxt-${idx}`).text('Enter wallet/email above to see usage').appendTo($usageSection);
   $card.append($usageSection);
@@ -530,8 +580,10 @@ function buildTierCard(t, idx) {
 // ═══════════════════════════════════════════════
 //  REFRESH USAGE ON TIER CARDS
 // ═══════════════════════════════════════════════
-function refreshUsageOnCards(apiName) {
-  if (!apiName || !config.apis[apiName]) return;
+let usageRefreshTimer = null;
+
+async function refreshUsageOnCards(apiName) {
+  if (!apiName || !tierCache[apiName]) return;
   const email  = $('#preview-email').val().trim();
   const wallet = $('#preview-wallet').val().trim();
   if (!email && !wallet) {
@@ -542,7 +594,13 @@ function refreshUsageOnCards(apiName) {
     return;
   }
   const u = getUsage();
-  const tiers = config.apis[apiName].tiers;
+  const tiers = tierCache[apiName];
+
+  // Fetch resolved config (effective limits after override) when wallet is provided
+  let resolved = null;
+  if (wallet) {
+    try { resolved = await fetchWalletConfig(apiName, wallet); } catch(e) { /* best-effort */ }
+  }
 
   tiers.forEach((tier, i) => {
     const scopeId = i === 0 ? email : wallet;
@@ -553,11 +611,15 @@ function refreshUsageOnCards(apiName) {
     }
     const usageKey = `${apiName}|t${tier.tier}|${scopeId}`;
 
+    // Use effective_max from resolved config if available, otherwise fall back to global
     let maxReq = tier.max_requests;
-    const ovr = (config.overrides[apiName] || []).find(r => r.wallet === wallet);
-    if (ovr) {
-      const ovrVal = [ovr.t1, ovr.t2, ovr.t3][i];
-      if (ovrVal && ovrVal !== 'global') maxReq = parseInt(ovrVal) || maxReq;
+    let overrideNote = '';
+    if (resolved) {
+      const rt = resolved.tiers.find(r => r.tier === tier.tier);
+      if (rt) {
+        maxReq = rt.effective_max;
+        if (rt.overridden) overrideNote = ' <span class="text-amber-600 font-semibold">overridden</span>';
+      }
     }
 
     const used = getCurrentCount(u, usageKey, tier);
@@ -567,6 +629,7 @@ function refreshUsageOnCards(apiName) {
     $(`#ubar-${i}`).css('width', `${pct}%`).removeClass('bg-stone-200 bg-emerald-400 bg-amber-400 bg-red-400').addClass(barColor);
     $(`#utxt-${i}`).html(
       `<span class="font-semibold text-stone-600">${used}</span> / ${maxReq} requests used &nbsp;·&nbsp; ${getWindowRemaining(tier)}` +
+      overrideNote +
       (pct >= 100 ? ' &nbsp;<span class="text-red-500 font-semibold">LIMIT REACHED</span>' : '')
     );
   });
@@ -575,120 +638,134 @@ function refreshUsageOnCards(apiName) {
 }
 
 // ═══════════════════════════════════════════════
-//  OVERRIDES CARD
+//  OVERRIDES CARD  (paginated, ScyllaDB-backed)
 // ═══════════════════════════════════════════════
 function buildOverridesCard(apiName) {
-  if (!config.overrides[apiName]) config.overrides[apiName] = [];
+  // Pagination state scoped to this card instance
+  let overrides    = [];
+  let nextToken    = null;
+  let hasMore      = false;
+  let loadingMore  = false;
 
   const $card = $(`
-    <div class="bg-white border border-stone-200/80 rounded-2xl p-5 shadow-sm space-y-5">
+    <div class="bg-white border border-stone-200 rounded-xl p-4 space-y-4">
 
       <!-- Header -->
       <div>
-        <div class="flex items-baseline gap-2 mb-1">
-          <span class="text-[10px] font-semibold uppercase tracking-widest text-stone-400">Per-wallet overrides</span>
-          <span class="text-[10px] text-stone-400">— ${apiName}</span>
+        <div class="flex items-center gap-2 mb-2">
+          <span class="text-xs font-bold text-stone-700">Per-wallet overrides</span>
         </div>
-        <p class="text-xs text-stone-500">Override T2 and T3 limits for specific wallets on this API only. T1 is email-scoped — override at email level instead.</p>
+        <div class="flex flex-wrap gap-1.5 mb-2">
+          <span class="inline-block font-mono text-[10.5px] text-stone-500 bg-stone-100 border border-stone-200 rounded-lg px-2 py-0.5">ScyllaDB · api_name = <span class="text-amber-600">${apiName}</span></span>
+          <span class="inline-block font-mono text-[10.5px] text-stone-500 bg-stone-100 border border-stone-200 rounded-lg px-2 py-0.5">Redis · rl:override:<span class="text-amber-600">${apiName}</span>:{wallet}</span>
+        </div>
+        <p class="text-[11px] text-stone-400">Override T2 and T3 limits for specific wallets. T1 is email-scoped.</p>
       </div>
 
       <!-- ── Wallet State Lookup ── -->
-      <div class="border border-stone-100 rounded-xl overflow-hidden">
-        <div class="bg-stone-50 px-4 py-2.5 border-b border-stone-100 flex items-center justify-between gap-3">
-          <span class="text-[11px] font-semibold text-stone-500 uppercase tracking-wide">Lookup wallet state</span>
-          <div class="flex items-center gap-2 flex-1 max-w-xs">
-            <div class="relative flex-1">
-              <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-stone-400 pointer-events-none"
+      <div class="border border-stone-100 rounded-lg overflow-hidden">
+        <div class="bg-stone-50 px-3 py-2 border-b border-stone-100 flex items-center justify-between gap-2">
+          <span class="text-[10px] font-bold text-stone-500 uppercase tracking-wide">Lookup wallet state</span>
+          <div class="flex items-center gap-1.5 flex-1 max-w-xs justify-end">
+            <div class="relative flex-1 max-w-[200px]">
+              <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-stone-400 pointer-events-none"
                 fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                 <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
               </svg>
-              <input id="lookup-wallet" type="text" placeholder="Enter wallet number…"
-                class="w-full pl-8 pr-3 py-1.5 text-xs border border-stone-200 rounded-lg bg-white
-                       focus:outline-none focus:ring-2 focus:ring-amber-400 placeholder-stone-400" />
+              <input id="lookup-wallet" type="text" placeholder="Wallet number"
+                class="w-full pl-7 pr-2 py-1.5 text-xs border border-stone-200 rounded-md bg-white
+                       focus:outline-none focus:ring-2 focus:ring-amber-400 placeholder-stone-400 font-mono" />
             </div>
             <button id="lookup-btn"
-              class="px-3 py-1.5 text-xs font-semibold text-white bg-stone-700 hover:bg-stone-800 rounded-lg transition-colors flex-shrink-0">
+              class="px-2.5 py-1.5 text-xs font-semibold text-white bg-stone-700 hover:bg-stone-800 rounded-md transition-colors flex-shrink-0">
               Search
             </button>
-            <button id="lookup-clear" class="hidden text-stone-400 hover:text-stone-600 p-1 rounded transition-colors">
+            <button id="lookup-clear" class="hidden text-stone-400 hover:text-stone-600 p-1 rounded transition-colors flex-shrink-0">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
             </button>
           </div>
         </div>
-        <div id="lookup-result" class="hidden px-4 py-3.5"></div>
+        <div id="lookup-result" class="hidden px-3 py-3"></div>
       </div>
 
       <!-- ── Add Override Form ── -->
       <div>
-        <p class="text-[11px] font-semibold text-stone-400 uppercase tracking-wide mb-3">Add override</p>
+        <p class="text-[10px] font-bold text-stone-400 uppercase tracking-wide mb-2">Add override</p>
         <div class="flex flex-wrap gap-2 items-end">
-          <div class="flex-1 min-w-[130px] space-y-1">
-            <label class="text-[11px] font-medium text-stone-500">Wallet number</label>
+          <div class="flex-1 min-w-[120px] space-y-1">
+            <label class="text-[10px] font-semibold text-stone-400">Wallet</label>
             <input id="ov-wallet" type="text" placeholder="01700000099"
-              class="w-full px-3 py-2 text-xs border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white" />
+              class="w-full px-2.5 py-1.5 text-xs border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white font-mono" />
           </div>
-          <div class="flex-1 min-w-[90px] space-y-1">
-            <label class="text-[11px] font-medium text-stone-500">T1 limit</label>
+          <div class="flex-1 min-w-[80px] space-y-1">
+            <label class="text-[10px] font-semibold text-stone-400">T1 limit</label>
             <input id="ov-t1" type="text" placeholder="global"
-              class="w-full px-3 py-2 text-xs border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white" />
+              class="w-full px-2.5 py-1.5 text-xs border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white" />
           </div>
-          <div class="flex-1 min-w-[90px] space-y-1">
-            <label class="text-[11px] font-medium text-stone-500">T2 limit</label>
+          <div class="flex-1 min-w-[80px] space-y-1">
+            <label class="text-[10px] font-semibold text-stone-400">T2 limit</label>
             <input id="ov-t2" type="text" placeholder="global"
-              class="w-full px-3 py-2 text-xs border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white" />
+              class="w-full px-2.5 py-1.5 text-xs border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white" />
+          </div>
+          <div class="flex-1 min-w-[80px] space-y-1">
+            <label class="text-[10px] font-semibold text-stone-400">T3 limit</label>
+            <input id="ov-t3" type="text" placeholder="global"
+              class="w-full px-2.5 py-1.5 text-xs border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white" />
           </div>
           <div class="flex-1 min-w-[90px] space-y-1">
-            <label class="text-[11px] font-medium text-stone-500">T3 limit</label>
-            <input id="ov-t3" type="text" placeholder="global"
-              class="w-full px-3 py-2 text-xs border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white" />
-          </div>
-          <div class="flex-1 min-w-[100px] space-y-1">
-            <label class="text-[11px] font-medium text-stone-500">Reason</label>
+            <label class="text-[10px] font-semibold text-stone-400">Reason</label>
             <input id="ov-reason" type="text" placeholder="note"
-              class="w-full px-3 py-2 text-xs border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white" />
+              class="w-full px-2.5 py-1.5 text-xs border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white" />
           </div>
           <button id="ov-add"
-            class="px-4 py-2 text-xs font-semibold text-white bg-amber-500 hover:bg-amber-600 rounded-lg transition-colors flex-shrink-0 self-end">
+            class="px-3 py-1.5 text-xs font-semibold text-white bg-amber-500 hover:bg-amber-600 rounded-md transition-colors flex-shrink-0 self-end">
             Add
           </button>
         </div>
       </div>
 
       <!-- ── Override Table ── -->
-      <div class="overflow-x-auto rounded-xl border border-stone-100">
+      <div class="overflow-x-auto rounded-lg border border-stone-100">
         <table class="w-full text-xs min-w-[520px]">
           <thead>
             <tr class="bg-stone-50 border-b border-stone-100">
-              <th class="text-left px-4 py-2.5 text-stone-500 font-semibold">Wallet</th>
-              <th class="text-left px-4 py-2.5 text-stone-500 font-semibold">T1 limit</th>
-              <th class="text-left px-4 py-2.5 text-stone-500 font-semibold">T2 limit</th>
-              <th class="text-left px-4 py-2.5 text-stone-500 font-semibold">T3 limit</th>
-              <th class="text-left px-4 py-2.5 text-stone-500 font-semibold">Reason</th>
-              <th class="px-4 py-2.5"></th>
+              <th class="text-left px-3 py-2 text-[10px] font-bold text-stone-400 uppercase tracking-wide">Wallet</th>
+              <th class="text-left px-3 py-2 text-[10px] font-bold text-stone-400 uppercase tracking-wide">T1</th>
+              <th class="text-left px-3 py-2 text-[10px] font-bold text-stone-400 uppercase tracking-wide">T2</th>
+              <th class="text-left px-3 py-2 text-[10px] font-bold text-stone-400 uppercase tracking-wide">T3</th>
+              <th class="text-left px-3 py-2 text-[10px] font-bold text-stone-400 uppercase tracking-wide">Reason</th>
+              <th class="px-3 py-2"></th>
             </tr>
           </thead>
           <tbody id="ov-tbody"></tbody>
         </table>
       </div>
+      <!-- Load more -->
+      <div id="ov-load-more" class="hidden flex justify-center">
+        <button id="ov-load-more-btn"
+          class="px-3 py-1.5 text-xs font-semibold text-stone-500 border border-stone-200 hover:bg-stone-50 rounded-md transition-colors">
+          Load more
+        </button>
+      </div>
     </div>`);
 
   function refreshTable() {
     const $tbody = $card.find('#ov-tbody').empty();
-    const rows = config.overrides[apiName];
-    if (!rows.length) {
+    if (!overrides.length) {
       $('<tr>').append(
         $('<td colspan="6" class="py-8 text-center text-stone-400 text-xs">').text('No wallet overrides for this API')
       ).appendTo($tbody);
     } else {
-      rows.forEach((r, i) => {
+      overrides.forEach((r, i) => {
         const $del = $('<button>')
           .addClass('text-stone-300 hover:text-red-500 transition-colors p-1 rounded')
           .html(`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>`)
           .on('click', async function() {
-            const deletedWallet = config.overrides[apiName][i].wallet;
+            const deletedWallet = overrides[i].wallet;
             try {
               await apiDeleteOverride(apiName, deletedWallet);
-              config.overrides[apiName].splice(i, 1);
+              overrides.splice(i, 1);
+              invalidateWalletConfig(apiName, deletedWallet);
               refreshTable();
               if ($card.find('#lookup-wallet').val().trim() === deletedWallet) doLookup();
               showToast('Override removed', 'ok');
@@ -697,65 +774,85 @@ function buildOverridesCard(apiName) {
             }
           });
 
-        $('<tr class="border-t border-stone-50 hover:bg-stone-50/60 transition-colors">').append(
-          $('<td class="px-4 py-2.5 font-mono text-stone-700">').text(r.wallet),
-          $('<td class="px-4 py-2.5 text-stone-500">').text(r.t1),
-          $('<td class="px-4 py-2.5 text-stone-500">').text(r.t2),
-          $('<td class="px-4 py-2.5 text-stone-500">').text(r.t3),
-          $('<td class="px-4 py-2.5 text-stone-400">').text(r.reason),
-          $('<td class="px-3 py-2.5 text-right">').append($del)
+        const rowBg = i % 2 === 0 ? '' : 'bg-stone-50/60';
+        $(`<tr class="border-t border-stone-100 hover:bg-amber-50/30 transition-colors ${rowBg}">`).append(
+          $('<td class="px-3 py-2 font-mono text-stone-700">').text(r.wallet),
+          $('<td class="px-3 py-2 text-stone-500">').text(r.t1),
+          $('<td class="px-3 py-2 text-stone-500">').text(r.t2),
+          $('<td class="px-3 py-2 text-stone-500">').text(r.t3),
+          $('<td class="px-3 py-2 text-stone-400">').text(r.reason),
+          $('<td class="px-2 py-2 text-right">').append($del)
         ).appendTo($tbody);
       });
     }
+
+    // Show/hide load-more button
+    if (hasMore) {
+      $card.find('#ov-load-more').removeClass('hidden');
+    } else {
+      $card.find('#ov-load-more').addClass('hidden');
+    }
   }
 
-  // ── Wallet Lookup ──
-  function resolveWalletState(walletNum) {
-    const tiers = config.apis[apiName] ? config.apis[apiName].tiers : [];
-    const override = (config.overrides[apiName] || []).find(r => r.wallet === walletNum);
-
-    return tiers.map((t, i) => {
-      const isDaily = t.unit === 'daily';
-      const globalLimit = isDaily
-        ? `${t.max_requests} / day (resets ${t.reset_hour}:00)`
-        : `${t.max_requests} / ${t.window} ${t.unit}`;
-
-      let effectiveLimit = globalLimit;
-      let source = 'global';
-
-      if (override) {
-        const ov = [override.t1, override.t2, override.t3][i];
-        if (ov && ov !== 'global') {
-          effectiveLimit = ov;
-          source = 'override';
-        }
-      }
-
-      return { tier: t.tier, scope: t.scope, globalLimit, effectiveLimit, source, enabled: t.enabled, actionMode: t.action_mode };
-    });
+  async function loadMore() {
+    if (loadingMore) return;
+    loadingMore = true;
+    const $btn = $card.find('#ov-load-more-btn').text('Loading…').prop('disabled', true);
+    try {
+      const page = await fetchOverridePage(apiName, nextToken);
+      overrides.push(...(page.data || []));
+      nextToken = page.next_page_token || null;
+      hasMore   = page.has_more || false;
+      refreshTable();
+    } catch(e) {
+      showToast('Failed to load overrides', 'error');
+    } finally {
+      loadingMore = false;
+      $btn.text('Load more').prop('disabled', false);
+    }
   }
 
-  function doLookup() {
+  $card.find('#ov-load-more-btn').on('click', loadMore);
+
+  // ── Wallet Lookup — backed by GET /api/v1/apis/:name/config/:wallet (single Redis MGET) ──
+  async function doLookup() {
     const walletNum = $card.find('#lookup-wallet').val().trim();
-    const $result = $card.find('#lookup-result');
+    const $result   = $card.find('#lookup-result');
 
     if (!walletNum) {
       $card.find('#lookup-wallet').focus();
       return;
     }
 
-    const states = resolveWalletState(walletNum);
-    $result.empty().removeClass('hidden');
+    // Show loading state
+    $result.empty().removeClass('hidden').html(
+      `<div class="flex items-center gap-2 text-xs text-stone-400 py-1">
+        <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+        </svg>
+        Looking up wallet…
+      </div>`
+    );
     $card.find('#lookup-clear').removeClass('hidden');
 
-    const hasOverride = (config.overrides[apiName] || []).some(r => r.wallet === walletNum);
+    let resolved;
+    try {
+      resolved = await fetchWalletConfig(apiName, walletNum);
+    } catch(e) {
+      $result.html(`<p class="text-xs text-red-400">Failed to fetch wallet config</p>`);
+      return;
+    }
 
+    $result.empty();
+
+    const hasOverride = resolved.tiers.some(rt => rt.overridden);
     const $header = $(`
       <div class="flex items-center gap-2 mb-3">
         <span class="font-mono text-xs font-semibold text-stone-700">${walletNum}</span>
         ${hasOverride
-          ? '<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 ring-1 ring-amber-200">has override</span>'
-          : '<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-stone-100 text-stone-500">using global defaults</span>'}
+          ? '<span class="text-[10px] font-semibold px-2 py-0.5 rounded bg-amber-50 text-amber-600 ring-1 ring-amber-200">has override</span>'
+          : '<span class="text-[10px] font-semibold px-2 py-0.5 rounded bg-stone-100 text-stone-500">using global defaults</span>'}
       </div>`);
     $result.append($header);
 
@@ -766,38 +863,45 @@ function buildOverridesCard(apiName) {
       { bg: 'bg-emerald-50', border: 'border-emerald-100', label: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-800' },
     ];
 
-    states.forEach((s, i) => {
+    resolved.tiers.forEach((rt, i) => {
       const c = TIER_COLORS[i] || TIER_COLORS[0];
-      const isOverridden = s.source === 'override';
-      const enabledDot = s.enabled
+      const isDaily = rt.unit === 'daily';
+      const globalLabel = isDaily
+        ? `${rt.global_max} / day (resets ${rt.reset_hour}:00)`
+        : `${rt.global_max} / ${rt.window ?? '?'} ${rt.unit}`;
+      const effectiveLabel = isDaily
+        ? `${rt.effective_max} / day (resets ${rt.reset_hour}:00)`
+        : `${rt.effective_max} / ${rt.window ?? '?'} ${rt.unit}`;
+
+      const enabledDot = rt.enabled
         ? '<span class="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0"></span>'
         : '<span class="w-1.5 h-1.5 rounded-full bg-stone-300 flex-shrink-0"></span>';
 
       $grid.append($(`
-        <div class="rounded-xl border ${c.border} ${c.bg} p-3 space-y-2">
+        <div class="rounded-lg border ${c.border} ${c.bg} p-3 space-y-2">
           <div class="flex items-center justify-between gap-1">
             <div class="flex items-center gap-1.5">
               ${enabledDot}
-              <span class="text-[11px] font-semibold ${c.label}">Tier ${s.tier}</span>
-              <span class="text-[10px] px-1.5 py-0.5 rounded-full ${c.badge}">${s.scope}</span>
+              <span class="text-[11px] font-semibold ${c.label}">Tier ${rt.tier}</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded ${c.badge}">${rt.scope}</span>
             </div>
-            <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full
-              ${s.actionMode === 'enforce' ? 'bg-red-50 text-red-600' : 'bg-stone-100 text-stone-500'}">
-              ${s.actionMode}
+            <span class="text-[10px] font-medium px-1.5 py-0.5 rounded
+              ${rt.action_mode === 'enforce' ? 'bg-red-50 text-red-600' : 'bg-stone-100 text-stone-500'}">
+              ${rt.action_mode}
             </span>
           </div>
           <div>
             <p class="text-[10px] text-stone-400 mb-0.5">Effective limit</p>
-            <p class="text-xs font-semibold text-stone-800 font-mono">${s.effectiveLimit}</p>
+            <p class="text-xs font-semibold text-stone-800 font-mono">${effectiveLabel}</p>
           </div>
-          ${isOverridden ? `
+          ${rt.overridden ? `
           <div>
             <p class="text-[10px] text-stone-400 mb-0.5">Global default</p>
-            <p class="text-[10px] text-stone-500 font-mono line-through">${s.globalLimit}</p>
+            <p class="text-[10px] text-stone-500 font-mono line-through">${globalLabel}</p>
           </div>` : ''}
           <div class="pt-1 border-t ${c.border}">
-            <span class="text-[10px] ${isOverridden ? 'text-amber-600 font-semibold' : 'text-stone-400'}">
-              ${isOverridden ? '↑ overridden' : 'global default'}
+            <span class="text-[10px] ${rt.overridden ? 'text-amber-600 font-semibold' : 'text-stone-400'}">
+              ${rt.overridden ? '↑ overridden' : 'global default'}
             </span>
           </div>
         </div>`));
@@ -821,10 +925,6 @@ function buildOverridesCard(apiName) {
       setTimeout(() => $card.find('#ov-wallet').removeClass('ring-2 ring-red-400'), 1500);
       return;
     }
-    if (config.overrides[apiName].some(r => r.wallet === wallet)) {
-      showToast('Wallet already has an override', 'error');
-      return;
-    }
     const override = {
       wallet,
       t1: $card.find('#ov-t1').val().trim() || 'global',
@@ -834,7 +934,10 @@ function buildOverridesCard(apiName) {
     };
     try {
       await apiAddOverride(apiName, override);
-      config.overrides[apiName].push(override);
+      invalidateWalletConfig(apiName, wallet);
+      // Upsert in local list
+      const idx = overrides.findIndex(r => r.wallet === wallet);
+      if (idx >= 0) overrides[idx] = override; else overrides.unshift(override);
       $card.find('#ov-wallet,#ov-t1,#ov-t2,#ov-t3,#ov-reason').val('');
       refreshTable();
       if ($card.find('#lookup-wallet').val().trim() === wallet) doLookup();
@@ -844,7 +947,9 @@ function buildOverridesCard(apiName) {
     }
   });
 
-  refreshTable();
+  // Initial page load
+  loadMore();
+
   return $card;
 }
 
@@ -865,13 +970,13 @@ function closeApiPanel() {
 // ═══════════════════════════════════════════════
 $(async function() {
   try {
-    await loadConfig();
+    await fetchAPIList();
   } catch(e) {
     showToast('Could not connect to server', 'error');
   }
 
   renderSidebar();
-  renderMain();
+  await renderMain();
 
   window.addEventListener('storage', (e) => {
     if (e.key === USAGE_KEY) refreshUsageOnCards(selectedApiName);

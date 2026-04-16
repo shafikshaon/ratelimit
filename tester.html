@@ -8,132 +8,146 @@
   <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif; }
-    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 9px; }
-    ::-webkit-scrollbar-thumb:hover { background: #d1d5db; }
+    ::-webkit-scrollbar-thumb { background: #d6d3d1; border-radius: 9px; }
+    ::-webkit-scrollbar-thumb:hover { background: #a8a29e; }
+    /* Light scrollbar for log area */
+    #log-area::-webkit-scrollbar-thumb { background: #e7e5e4; }
+    /* Input focus */
+    .panel-input:focus { outline: none; border-color: #f59e0b; box-shadow: 0 0 0 2px #f59e0b30; }
+    /* Smooth transitions */
+    .tier-card { transition: box-shadow 0.15s ease; }
+    .log-row:nth-child(even) { background: #fafaf9; }
   </style>
 </head>
 
-<body class="bg-[#edeae4] text-gray-900 antialiased h-screen overflow-hidden">
+<body class="bg-stone-100 text-stone-900 antialiased h-screen overflow-hidden">
 
-<div class="h-screen flex flex-col px-4 sm:px-6 lg:px-10 py-4 gap-3">
+<div class="h-screen flex flex-col">
 
-  <!-- ── HEADER ── -->
-  <header class="bg-[#faf8f5] border border-stone-200/80 rounded-2xl flex-shrink-0 shadow-sm">
-    <div class="px-5 h-14 flex items-center gap-3">
+  <!-- ── SPLIT HEADER ── -->
+  <header class="flex flex-shrink-0 h-12 border-b border-stone-200">
 
-      <!-- Logo mark -->
-      <div class="flex items-center gap-2.5 mr-2">
-        <div class="w-7 h-7 rounded-lg bg-amber-500 flex items-center justify-center text-white font-bold text-[11px] flex-shrink-0">RL</div>
-        <span class="font-bold text-sm text-stone-800 hidden sm:block">RateLimiter</span>
+    <!-- Left: brand strip (matches sidebar width) -->
+    <div class="w-72 flex-shrink-0 bg-white flex items-center gap-2.5 px-4 border-r border-stone-200">
+      <div class="w-6 h-6 rounded-md bg-amber-500 flex items-center justify-center text-white font-bold text-[10px] flex-shrink-0">RL</div>
+      <span class="font-bold text-sm text-stone-900 tracking-tight">RateLimiter</span>
+      <span class="text-stone-400 text-xs ml-1">/ Tester</span>
+    </div>
+
+    <!-- Right: light strip -->
+    <div class="flex-1 bg-white flex items-center px-5 gap-3">
+      <div class="flex-1 min-w-0">
+        <span class="font-semibold text-sm text-stone-800">API Tester</span>
+        <span class="hidden sm:inline text-stone-400 text-xs ml-2">Simulate requests &middot; Live tier enforcement</span>
       </div>
-
-      <div class="w-px h-5 bg-stone-200 flex-shrink-0"></div>
-
-      <!-- Title -->
-      <div class="flex-1 min-w-0 pl-1">
-        <h1 class="font-bold text-sm sm:text-base text-stone-900 leading-tight truncate">API Tester</h1>
-        <p class="text-[11px] text-stone-400 hidden sm:block leading-tight">Simulate requests &middot; Live usage tracking &middot; Tier enforcement</p>
-      </div>
-
-      <!-- Actions -->
-      <div class="flex items-center gap-2 flex-shrink-0">
+      <div class="flex items-center gap-2">
         <a href="index.html" target="_blank"
-          class="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-stone-700 border border-stone-300 hover:bg-stone-100 rounded-lg transition-colors">
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-stone-600 border border-stone-200 hover:border-stone-300 hover:bg-stone-50 rounded-md transition-colors">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15,3 21,3 21,9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
           Config
         </a>
         <button id="clear-usage-btn"
-          class="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-red-600 border border-red-300 hover:bg-red-50 rounded-lg transition-colors">
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 border border-red-200 hover:bg-red-50 rounded-md transition-colors">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
-          Clear All Usage
+          Clear usage
         </button>
       </div>
     </div>
   </header>
 
   <!-- ── BODY ── -->
-  <div class="flex gap-3 flex-1 overflow-hidden min-h-0">
+  <div class="flex flex-1 overflow-hidden min-h-0 bg-stone-100 p-3 gap-3">
 
     <!-- ── LEFT PANEL ── -->
-    <aside class="w-72 flex-shrink-0 bg-[#faf8f5] border border-stone-200/80 rounded-2xl shadow-sm p-5 flex flex-col gap-4 overflow-y-auto">
+    <aside class="w-72 flex-shrink-0 bg-white border border-stone-200 rounded-xl shadow-sm flex flex-col overflow-y-auto">
 
-      <!-- API selector -->
-      <div class="space-y-1.5">
-        <label class="text-[11px] font-semibold uppercase tracking-wide text-stone-400">API Endpoint</label>
-        <div class="relative">
-          <select id="api-select"
-            class="w-full px-3 py-2 text-xs font-semibold border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white appearance-none pr-8 text-stone-700">
-          </select>
-          <svg class="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-stone-400 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6,9 12,15 18,9"/></svg>
+      <div class="p-4 flex flex-col gap-4">
+
+        <!-- API selector -->
+        <div class="space-y-1.5">
+          <label class="text-[9px] font-bold uppercase tracking-widest text-stone-400">API Endpoint</label>
+          <div class="relative">
+            <select id="api-select"
+              class="panel-input w-full px-3 py-2 text-xs font-semibold border border-stone-200 rounded-md bg-stone-50 text-stone-700 appearance-none pr-8">
+            </select>
+            <svg class="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-stone-400 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6,9 12,15 18,9"/></svg>
+          </div>
         </div>
-      </div>
 
-      <!-- Email input (T1) -->
-      <div class="space-y-1.5">
-        <label class="text-[11px] font-semibold uppercase tracking-wide text-stone-400">
-          Email
-          <span class="ml-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 normal-case tracking-normal">T1 scope</span>
-        </label>
-        <input id="tester-email" type="email" placeholder="user@example.com"
-          class="w-full px-3 py-2 text-xs border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white placeholder-stone-300" />
-        <p class="text-[10px] text-stone-400">Used as the rate-limit key for Tier 1</p>
-      </div>
-
-      <!-- Wallet input (T2/T3) -->
-      <div class="space-y-1.5">
-        <label class="text-[11px] font-semibold uppercase tracking-wide text-stone-400">
-          Wallet
-          <span class="ml-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 normal-case tracking-normal">T2 &amp; T3 scope</span>
-        </label>
-        <input id="tester-wallet" type="text" placeholder="01700000099"
-          class="w-full px-3 py-2 text-xs border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white placeholder-stone-300" />
-        <p class="text-[10px] text-stone-400">Used as the rate-limit key for Tier 2 &amp; 3</p>
-      </div>
-
-      <!-- Validation warning -->
-      <div id="scope-warning" class="hidden bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 space-y-1">
-        <p class="text-[11px] font-semibold text-amber-700">Scope required</p>
-        <p class="text-[10px] text-amber-600" id="scope-warning-msg">Enter email and/or wallet to track usage per identity.</p>
-      </div>
-
-      <!-- Requests to fire -->
-      <div class="space-y-1.5">
-        <label class="text-[11px] font-semibold uppercase tracking-wide text-stone-400">Requests to fire</label>
-        <input id="req-count" type="number" min="1" max="500" value="10"
-          class="w-full px-3 py-2 text-xs font-semibold border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white" />
-      </div>
-
-      <!-- Delay -->
-      <div class="space-y-1.5">
-        <label class="text-[11px] font-semibold uppercase tracking-wide text-stone-400">Delay between requests (ms)</label>
-        <input id="req-delay" type="number" min="0" max="5000" value="200"
-          class="w-full px-3 py-2 text-xs font-semibold border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white" />
-      </div>
-
-      <!-- Run / Stop buttons -->
-      <div class="flex flex-col gap-2">
-        <button id="run-btn"
-          class="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 text-xs font-bold text-white bg-amber-500 hover:bg-amber-600 rounded-xl transition-colors shadow-sm">
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>
-          Run Test
-        </button>
-        <button id="stop-btn"
-          class="hidden w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 text-xs font-semibold text-stone-600 border border-stone-300 hover:bg-stone-100 rounded-xl transition-colors">
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
-          Stop
-        </button>
-      </div>
-
-      <div class="border-t border-stone-200"></div>
-
-      <!-- Config summary -->
-      <div class="space-y-2">
-        <p class="text-[10px] font-semibold uppercase tracking-wide text-stone-400">Config Summary</p>
-        <div id="config-summary" class="space-y-1.5 text-[10px] text-stone-500">
-          <p class="text-stone-300 italic">No API selected</p>
+        <!-- Email input (T1) -->
+        <div class="space-y-1.5">
+          <label class="text-[9px] font-bold uppercase tracking-widest text-stone-400">
+            Email
+            <span class="ml-1 text-[9px] font-semibold px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 normal-case tracking-normal border border-blue-100">T1 scope</span>
+          </label>
+          <input id="tester-email" type="email" placeholder="user@example.com"
+            class="panel-input w-full px-3 py-2 text-xs border border-stone-200 rounded-md bg-stone-50 text-stone-700 placeholder-stone-400" />
+          <p class="text-[10px] text-stone-400">Rate-limit key for Tier 1</p>
         </div>
+
+        <!-- Wallet input (T2/T3) -->
+        <div class="space-y-1.5">
+          <label class="text-[9px] font-bold uppercase tracking-widest text-stone-400">
+            Wallet
+            <span class="ml-1 text-[9px] font-semibold px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 normal-case tracking-normal border border-amber-100">T2 &amp; T3 scope</span>
+          </label>
+          <input id="tester-wallet" type="text" placeholder="01700000099"
+            class="panel-input w-full px-3 py-2 text-xs border border-stone-200 rounded-md bg-stone-50 text-stone-700 placeholder-stone-400 font-mono" />
+          <p class="text-[10px] text-stone-400">Rate-limit key for Tier 2 &amp; 3</p>
+        </div>
+
+        <!-- Scope warning -->
+        <div id="scope-warning" class="hidden bg-amber-50 border border-amber-200 rounded-md px-3 py-2 space-y-0.5">
+          <p class="text-[11px] font-semibold text-amber-700">Scope required</p>
+          <p class="text-[10px] text-amber-600" id="scope-warning-msg">Enter email and/or wallet to track usage per identity.</p>
+        </div>
+
+        <!-- Requests / Delay row -->
+        <div class="grid grid-cols-2 gap-3">
+          <div class="space-y-1.5">
+            <label class="text-[9px] font-bold uppercase tracking-widest text-stone-400">Requests</label>
+            <input id="req-count" type="number" min="1" max="500" value="10"
+              class="panel-input w-full px-2.5 py-2 text-xs font-semibold border border-stone-200 rounded-md bg-stone-50 text-stone-700" />
+          </div>
+          <div class="space-y-1.5">
+            <label class="text-[9px] font-bold uppercase tracking-widest text-stone-400">Delay (ms)</label>
+            <input id="req-delay" type="number" min="0" max="5000" value="200"
+              class="panel-input w-full px-2.5 py-2 text-xs font-semibold border border-stone-200 rounded-md bg-stone-50 text-stone-700" />
+          </div>
+        </div>
+
+        <!-- Run / Stop buttons -->
+        <div class="flex flex-col gap-2">
+          <button id="run-btn"
+            class="w-full inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold text-white bg-amber-500 hover:bg-amber-600 rounded-md transition-colors">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>
+            Run Test
+          </button>
+          <button id="stop-btn"
+            class="hidden w-full inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-semibold text-stone-600 border border-stone-200 hover:bg-stone-50 rounded-md transition-colors">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+            Stop
+          </button>
+        </div>
+
+        <!-- Divider -->
+        <div class="border-t border-stone-100"></div>
+
+        <!-- Config summary -->
+        <div class="space-y-2">
+          <p class="text-[9px] font-bold uppercase tracking-widest text-stone-400">Config Summary</p>
+          <div id="config-summary" class="space-y-1.5 text-[10px] text-stone-500">
+            <p class="text-stone-400 italic">No API selected</p>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Spacer + status footer -->
+      <div class="mt-auto px-4 py-3 border-t border-stone-100">
+        <p id="tester-status" class="text-[10px] text-stone-400"></p>
       </div>
 
     </aside>
@@ -147,23 +161,23 @@
       </div>
 
       <!-- Request log -->
-      <div class="flex-1 bg-white border border-stone-200/80 rounded-2xl overflow-hidden flex flex-col min-h-0">
+      <div class="flex-1 bg-white border border-stone-200 rounded-xl overflow-hidden flex flex-col min-h-0">
         <!-- Log header -->
-        <div class="px-4 py-3 border-b border-stone-100 flex items-center gap-2 flex-shrink-0">
+        <div class="px-4 py-2.5 border-b border-stone-100 flex items-center gap-2 flex-shrink-0">
           <span class="text-xs font-bold text-stone-700">Request Log</span>
-          <span id="req-badge" class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-stone-100 text-stone-500">0 requests</span>
+          <span id="req-badge" class="text-[10px] font-semibold px-2 py-0.5 rounded bg-stone-100 text-stone-500">0 requests</span>
           <div class="flex-1"></div>
           <button id="clear-log-btn"
-            class="text-xs text-stone-400 hover:text-stone-600 px-2 py-1 rounded-lg hover:bg-stone-50 transition-colors">
+            class="text-[11px] text-stone-400 hover:text-stone-600 px-2 py-1 rounded-md hover:bg-stone-50 transition-colors">
             Clear
           </button>
         </div>
         <!-- Log entries -->
         <div id="log-area" class="flex-1 overflow-y-auto">
           <div id="log-empty" class="flex flex-col items-center justify-center h-full py-16 text-center">
-            <svg class="w-8 h-8 text-stone-200 mb-3" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+            <svg class="w-7 h-7 text-stone-200 mb-3" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
             <p class="text-sm font-semibold text-stone-300">No requests yet</p>
-            <p class="text-xs text-stone-300 mt-1">Configure and run a test above</p>
+            <p class="text-xs text-stone-300 mt-1">Configure and run a test</p>
           </div>
           <div id="log-entries"></div>
         </div>
@@ -172,14 +186,6 @@
     </div>
   </div>
 
-  <!-- ── FOOTER ── -->
-  <footer class="bg-[#faf8f5] border border-stone-200/80 rounded-2xl flex-shrink-0 shadow-sm">
-    <div class="px-5 py-3 flex items-center justify-between gap-4">
-      <p class="text-[11px] text-stone-400">API Tester &middot; Usage tracked in localStorage &middot; Synced with Config page</p>
-      <p id="tester-status" class="text-[11px] text-stone-400"></p>
-    </div>
-  </footer>
-
 </div><!-- /page wrapper -->
 
 
@@ -187,11 +193,11 @@
 // ═══════════════════════════════════════════════
 //  CONSTANTS
 // ═══════════════════════════════════════════════
-const CONFIG_KEY = 'ratelimit_config_v2';
-const USAGE_KEY  = 'ratelimit_usage_v2';
+const API_BASE  = '/api/v1';
+const USAGE_KEY = 'ratelimit_usage_v2';
 
 // ═══════════════════════════════════════════════
-//  USAGE UTILITIES (mirrors index.html)
+//  USAGE UTILITIES  (localStorage — client-side simulation)
 // ═══════════════════════════════════════════════
 function getUsage() {
   try { return JSON.parse(localStorage.getItem(USAGE_KEY) || '{}'); } catch(e) { return {}; }
@@ -211,7 +217,7 @@ function getCurrentCount(u, key, tier) {
   const d = u[key];
   if (!d) return 0;
   if (tier.unit === 'daily') {
-    const ds = getDayStart(tier.resetHour ?? 0);
+    const ds = getDayStart(tier.reset_hour ?? 0);
     if (!d.dayStart || d.dayStart < ds) return 0;
     return d.count || 0;
   }
@@ -220,7 +226,7 @@ function getCurrentCount(u, key, tier) {
 }
 function getWindowRemaining(tier) {
   if (tier.unit === 'daily') {
-    const ds = getDayStart(tier.resetHour ?? 0);
+    const ds = getDayStart(tier.reset_hour ?? 0);
     const nextReset = ds + 86400000;
     const diff = nextReset - Date.now();
     const h = Math.floor(diff / 3600000), m = Math.floor((diff % 3600000) / 60000);
@@ -229,11 +235,10 @@ function getWindowRemaining(tier) {
   const label = { seconds: 's', minutes: 'm', hours: 'h' }[tier.unit] || '';
   return `${tier.window}${label} rolling window`;
 }
-
 function recordRequest(u, key, tier) {
   if (!u[key]) u[key] = {};
   if (tier.unit === 'daily') {
-    const ds = getDayStart(tier.resetHour ?? 0);
+    const ds = getDayStart(tier.reset_hour ?? 0);
     if (!u[key].dayStart || u[key].dayStart < ds) u[key] = { dayStart: ds, count: 0 };
     u[key].count = (u[key].count || 0) + 1;
   } else {
@@ -248,20 +253,46 @@ function recordRequest(u, key, tier) {
 // ═══════════════════════════════════════════════
 //  STATE
 // ═══════════════════════════════════════════════
-let config = { apis: {}, overrides: {} };
+let apiGroups    = [];   // [{name, count, apis:[{id,name,group}]}]
+let tierCache    = {};   // { apiName: [Tier,...] }
+let resolvedCache = {};  // { "apiName|wallet": ResolvedConfig }
 let reqCount = 0;
 let running  = false;
 let stopFlag = false;
 let runTimer = null;
 
 // ═══════════════════════════════════════════════
-//  LOAD CONFIG
+//  API CALLS
 // ═══════════════════════════════════════════════
-function loadConfig() {
-  try {
-    const raw = localStorage.getItem(CONFIG_KEY);
-    if (raw) config = JSON.parse(raw);
-  } catch(e) {}
+async function fetchAPIList() {
+  const res = await fetch(`${API_BASE}/apis`);
+  if (!res.ok) throw new Error('Failed to load API list');
+  const json = await res.json();
+  apiGroups = json.data || [];
+}
+
+async function fetchTierConfig(apiName) {
+  if (tierCache[apiName]) return tierCache[apiName];
+  const res = await fetch(`${API_BASE}/apis/${encodeURIComponent(apiName)}`);
+  if (!res.ok) throw new Error('Failed to load API config');
+  const json = await res.json();
+  tierCache[apiName] = json.data.tiers || [];
+  return tierCache[apiName];
+}
+
+// Single Redis MGET: returns ResolvedConfig with effective_max per tier
+async function fetchWalletConfig(apiName, wallet) {
+  const cacheKey = `${apiName}|${wallet}`;
+  if (resolvedCache[cacheKey]) return resolvedCache[cacheKey];
+  const res = await fetch(`${API_BASE}/apis/${encodeURIComponent(apiName)}/config/${encodeURIComponent(wallet)}`);
+  if (!res.ok) throw new Error('Failed to fetch wallet config');
+  const data = await res.json();
+  resolvedCache[cacheKey] = data;
+  return data;
+}
+
+function invalidateWalletConfig(apiName, wallet) {
+  delete resolvedCache[`${apiName}|${wallet}`];
 }
 
 // ═══════════════════════════════════════════════
@@ -269,21 +300,13 @@ function loadConfig() {
 // ═══════════════════════════════════════════════
 function populateApiSelect() {
   const $sel = $('#api-select').empty();
-  const apis = Object.keys(config.apis);
-  if (!apis.length) {
-    $sel.append('<option value="">No APIs configured</option>');
+  if (!apiGroups.length) {
+    $sel.append('<option value="">No APIs available</option>');
     return;
   }
-  // Group by group field
-  const groups = {};
-  apis.forEach(name => {
-    const g = (config.apis[name].group || 'OTHER');
-    if (!groups[g]) groups[g] = [];
-    groups[g].push(name);
-  });
-  Object.keys(groups).forEach(g => {
-    const $og = $('<optgroup>').attr('label', g);
-    groups[g].forEach(name => $og.append($('<option>').val(name).text(name)));
+  apiGroups.forEach(group => {
+    const $og = $('<optgroup>').attr('label', group.name);
+    group.apis.forEach(api => $og.append($('<option>').val(api.name).text(api.name)));
     $sel.append($og);
   });
 }
@@ -291,23 +314,28 @@ function populateApiSelect() {
 // ═══════════════════════════════════════════════
 //  CONFIG SUMMARY PANEL
 // ═══════════════════════════════════════════════
-function updateConfigSummary() {
+async function updateConfigSummary() {
   const apiName = $('#api-select').val();
   const $sum = $('#config-summary').empty();
-  if (!apiName || !config.apis[apiName]) {
-    $sum.append('<p class="text-stone-300 italic">No API selected</p>');
+  if (!apiName) {
+    $sum.append('<p class="text-stone-600 italic">No API selected</p>');
     return;
   }
-  const tiers = config.apis[apiName].tiers;
+  $sum.append('<p class="text-stone-600 italic text-[10px]">Loading…</p>');
+  let tiers;
+  try { tiers = await fetchTierConfig(apiName); }
+  catch(e) { $sum.html('<p class="text-stone-300 italic">Failed to load</p>'); return; }
+
+  $sum.empty();
   const TIER_COLORS = ['text-blue-600', 'text-amber-600', 'text-emerald-600'];
   tiers.forEach((t, i) => {
-    const window = t.unit === 'daily'
-      ? `${t.maxRequests} / day`
-      : `${t.maxRequests} / ${t.window} ${t.unit}`;
-    const enabled = t.enabled ? '' : ' <span class="text-stone-300">(disabled)</span>';
+    const win = t.unit === 'daily'
+      ? `${t.max_requests} / day`
+      : `${t.max_requests} / ${t.window} ${t.unit}`;
+    const disabledNote = t.enabled ? '' : ' <span class="text-stone-300">(disabled)</span>';
     $sum.append(`<div class="flex items-start gap-1.5">
       <span class="font-semibold ${TIER_COLORS[i]} flex-shrink-0">T${t.tier}</span>
-      <span>${t.scope} · ${window} · <span class="${t.actionMode === 'enforce' ? 'text-red-500' : 'text-stone-400'}">${t.actionMode}</span>${enabled}</span>
+      <span>${t.scope} · ${win} · <span class="${t.action_mode === 'enforce' ? 'text-red-500' : 'text-stone-400'}">${t.action_mode}</span>${disabledNote}</span>
     </div>`);
   });
 }
@@ -315,62 +343,80 @@ function updateConfigSummary() {
 // ═══════════════════════════════════════════════
 //  TIER STATUS CARDS
 // ═══════════════════════════════════════════════
-function buildTierStatusCards(apiName) {
+function renderPlaceholderCards() {
   const $row = $('#tier-status-row').empty();
-  if (!apiName || !config.apis[apiName]) {
-    for (let i = 0; i < 3; i++) {
-      $row.append(`
-        <div class="bg-white rounded-2xl border border-stone-200 p-4 flex flex-col gap-2">
-          <div class="flex items-center gap-2">
-            <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-stone-100 text-stone-400">Tier ${i+1}</span>
-          </div>
-          <p class="text-xs text-stone-300 italic">No API selected</p>
-        </div>`);
-    }
-    return;
+  for (let i = 0; i < 3; i++) {
+    $row.append(`
+      <div class="bg-white rounded-xl border border-stone-200 p-3 flex flex-col gap-2">
+        <div class="flex items-center gap-2">
+          <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-stone-100 text-stone-400">Tier ${i+1}</span>
+        </div>
+        <p class="text-xs text-stone-300 italic">No API selected</p>
+      </div>`);
   }
-  const tiers = config.apis[apiName].tiers;
-  const TIER_BADGE = ['bg-blue-100 text-blue-800', 'bg-amber-100 text-amber-800', 'bg-emerald-100 text-emerald-800'];
+}
+
+async function buildTierStatusCards(apiName) {
+  const $row = $('#tier-status-row').empty();
+  if (!apiName) { renderPlaceholderCards(); return; }
+
+  let tiers;
+  try { tiers = await fetchTierConfig(apiName); }
+  catch(e) { renderPlaceholderCards(); return; }
+
+  const TIER_BADGE  = ['bg-blue-100 text-blue-800', 'bg-amber-100 text-amber-800', 'bg-emerald-100 text-emerald-800'];
   const SCOPE_BADGE = { email: 'bg-pink-100 text-pink-700', wallet: 'bg-amber-100 text-amber-700' };
 
   tiers.forEach((t, i) => {
-    const $card = $(`
-      <div class="bg-white rounded-2xl border border-stone-200 p-4 flex flex-col gap-2.5" id="tier-card-${i}">
-        <div class="flex items-center gap-2 flex-wrap">
-          <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full ${TIER_BADGE[i]}">Tier ${t.tier}</span>
-          <span class="text-[11px] font-medium px-2 py-0.5 rounded-full ${SCOPE_BADGE[t.scope] || 'bg-stone-100 text-stone-600'}">${t.scope}</span>
-          <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full ml-auto
-            ${t.actionMode === 'enforce' ? 'bg-red-50 text-red-500' : 'bg-stone-100 text-stone-400'}">${t.actionMode}</span>
+    $row.append($(`
+      <div class="tier-card bg-white rounded-xl border border-stone-200 p-3 flex flex-col gap-2" id="tier-card-${i}">
+        <!-- Tier header row -->
+        <div class="flex items-center gap-1.5 flex-wrap">
+          <span class="text-[10px] font-bold px-2 py-0.5 rounded ${TIER_BADGE[i]}">Tier ${t.tier}</span>
+          <span class="text-[10px] font-semibold px-2 py-0.5 rounded ${SCOPE_BADGE[t.scope] || 'bg-stone-100 text-stone-600'}">${t.scope}</span>
+          <span class="text-[9px] font-semibold px-1.5 py-0.5 rounded ml-auto
+            ${t.action_mode === 'enforce' ? 'bg-red-50 text-red-500' : 'bg-stone-100 text-stone-400'}">${t.action_mode}</span>
         </div>
-        <!-- Scope identity being tracked -->
-        <div class="flex items-center gap-1.5 min-w-0" id="tc-scope-row-${i}">
+        <!-- Scope identity -->
+        <div class="flex items-center gap-1.5 min-w-0">
           <svg class="w-3 h-3 text-stone-300 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
           <span class="text-[10px] text-stone-400 truncate font-mono" id="tc-scope-${i}">—</span>
         </div>
-        <div class="font-mono text-[9.5px] text-stone-400 bg-stone-50 rounded-lg px-2 py-1 truncate">${t.redisKey}</div>
+        <!-- Redis key -->
+        <div class="font-mono text-[9px] text-stone-400 bg-stone-50 border border-stone-100 rounded px-2 py-1 truncate">${t.redis_key}</div>
+        <!-- Usage bar -->
         <div>
-          <div class="w-full bg-stone-100 rounded-full h-1.5 mb-1">
-            <div class="h-1.5 rounded-full transition-all duration-500 bg-stone-200" id="tc-bar-${i}" style="width:0%"></div>
+          <div class="w-full bg-stone-100 rounded-full h-1 mb-1">
+            <div class="h-1 rounded-full transition-all duration-500 bg-stone-200" id="tc-bar-${i}" style="width:0%"></div>
           </div>
           <p class="text-[10px] text-stone-400" id="tc-txt-${i}">—</p>
         </div>
-        <div class="flex items-center justify-between">
-          <p class="text-[10px] text-stone-400" id="tc-win-${i}">${getWindowRemaining(t)}</p>
-          <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-stone-100 text-stone-400" id="tc-status-${i}">
+        <!-- Footer row -->
+        <div class="flex items-center justify-between gap-2 pt-0.5 border-t border-stone-100">
+          <p class="text-[9px] text-stone-400 truncate" id="tc-win-${i}">${getWindowRemaining(t)}</p>
+          <span class="text-[9px] font-bold px-2 py-0.5 rounded flex-shrink-0 bg-stone-100 text-stone-400" id="tc-status-${i}">
             ${t.enabled ? 'READY' : 'DISABLED'}
           </span>
         </div>
-      </div>`);
-    $row.append($card);
+      </div>`));
   });
 }
 
-function updateTierCards(apiName) {
-  if (!apiName || !config.apis[apiName]) return;
-  const tiers  = config.apis[apiName].tiers;
+// Updates usage bars on existing cards — fetches wallet resolved config for effective limits
+async function updateTierCards(apiName) {
+  if (!apiName) return;
+  let tiers;
+  try { tiers = await fetchTierConfig(apiName); } catch(e) { return; }
+
   const email  = $('#tester-email').val().trim();
   const wallet = $('#tester-wallet').val().trim();
   const u = getUsage();
+
+  // Fetch resolved config for effective limits (single MGET round trip)
+  let resolved = null;
+  if (wallet) {
+    try { resolved = await fetchWalletConfig(apiName, wallet); } catch(e) { /* best-effort */ }
+  }
 
   tiers.forEach((tier, i) => {
     if (!tier.enabled) {
@@ -381,7 +427,7 @@ function updateTierCards(apiName) {
       return;
     }
 
-    const scopeId = i === 0 ? email : wallet;
+    const scopeId    = i === 0 ? email : wallet;
     const scopeLabel = i === 0 ? 'email' : 'wallet';
     if (!scopeId) {
       $(`#tc-scope-${i}`).text(`No ${scopeLabel} — not tracked`).addClass('italic text-stone-300').removeClass('text-stone-400');
@@ -392,12 +438,11 @@ function updateTierCards(apiName) {
     }
     $(`#tc-scope-${i}`).text(scopeId).removeClass('italic text-stone-300').addClass('text-stone-500');
 
-    // Resolve effective limit (check overrides)
-    let maxReq = tier.maxRequests;
-    const ovr = (config.overrides[apiName] || []).find(r => r.wallet === wallet);
-    if (ovr) {
-      const ovrVal = [ovr.t1, ovr.t2, ovr.t3][i];
-      if (ovrVal && ovrVal !== 'global') maxReq = parseInt(ovrVal) || maxReq;
+    // Use effective_max from resolved config; fall back to global max
+    let maxReq = tier.max_requests;
+    if (resolved) {
+      const rt = resolved.tiers.find(r => r.tier === tier.tier);
+      if (rt) maxReq = rt.effective_max;
     }
 
     const usageKey = `${apiName}|t${tier.tier}|${scopeId}`;
@@ -411,7 +456,7 @@ function updateTierCards(apiName) {
     let statusText = 'PASS';
     let statusCls  = 'bg-emerald-50 text-emerald-700';
     if (pct >= 100) {
-      statusText = tier.actionMode === 'enforce' ? 'BLOCKED' : 'AT LIMIT';
+      statusText = tier.action_mode === 'enforce' ? 'BLOCKED' : 'AT LIMIT';
       statusCls  = 'bg-red-50 text-red-600';
     } else if (pct >= 75) {
       statusText = 'NEAR LIMIT';
@@ -425,49 +470,52 @@ function updateTierCards(apiName) {
 }
 
 // ═══════════════════════════════════════════════
-//  FIRE REQUEST
+//  FIRE REQUEST  (async — fetches resolved config for effective limits)
 // ═══════════════════════════════════════════════
-function fireRequest(apiName, email, wallet) {
-  if (!config.apis[apiName]) return { allowed: false, tierResults: [] };
+async function fireRequest(apiName, email, wallet) {
+  let tiers;
+  try { tiers = await fetchTierConfig(apiName); }
+  catch(e) { return { allowed: false, tierResults: [] }; }
 
-  const tiers = config.apis[apiName].tiers;
+  // Resolved config gives us effective_max after override in one round trip
+  let resolved = null;
+  if (wallet) {
+    try { resolved = await fetchWalletConfig(apiName, wallet); } catch(e) { /* use global limits */ }
+  }
+
   const u = getUsage();
   const tierResults = [];
   let allowed = true;
 
   tiers.forEach((tier, i) => {
     if (!tier.enabled) {
-      tierResults.push({ tier: tier.tier, scope: tier.scope, status: 'skipped', used: 0, limit: tier.maxRequests, actionMode: tier.actionMode });
+      tierResults.push({ tier: tier.tier, scope: tier.scope, status: 'skipped', used: 0, limit: tier.max_requests, actionMode: tier.action_mode });
       return;
     }
 
     const scopeId = i === 0 ? email : wallet;
     if (!scopeId) {
-      tierResults.push({ tier: tier.tier, scope: tier.scope, status: 'skipped', used: 0, limit: tier.maxRequests, actionMode: tier.actionMode });
+      tierResults.push({ tier: tier.tier, scope: tier.scope, status: 'skipped', used: 0, limit: tier.max_requests, actionMode: tier.action_mode });
       return;
     }
 
-    // Resolve effective limit
-    let maxReq = tier.maxRequests;
-    const ovr = (config.overrides[apiName] || []).find(r => r.wallet === wallet);
-    if (ovr) {
-      const ovrVal = [ovr.t1, ovr.t2, ovr.t3][i];
-      if (ovrVal && ovrVal !== 'global') maxReq = parseInt(ovrVal) || maxReq;
+    let maxReq = tier.max_requests;
+    if (resolved) {
+      const rt = resolved.tiers.find(r => r.tier === tier.tier);
+      if (rt) maxReq = rt.effective_max;
     }
 
     const usageKey = `${apiName}|t${tier.tier}|${scopeId}`;
     const used = getCurrentCount(u, usageKey, tier);
 
-    if (tier.actionMode === 'enforce' && used >= maxReq) {
-      // Blocked — do not record
-      tierResults.push({ tier: tier.tier, scope: tier.scope, status: 'blocked', used, limit: maxReq, actionMode: tier.actionMode, scopeId });
+    if (tier.action_mode === 'enforce' && used >= maxReq) {
+      tierResults.push({ tier: tier.tier, scope: tier.scope, status: 'blocked', used, limit: maxReq, actionMode: tier.action_mode, scopeId });
       allowed = false;
     } else {
-      // Transparent or within limit — record and pass
       recordRequest(u, usageKey, tier);
       const newUsed = getCurrentCount(u, usageKey, tier);
-      const status = (used >= maxReq && tier.actionMode === 'transparent') ? 'throttled' : 'pass';
-      tierResults.push({ tier: tier.tier, scope: tier.scope, status, used: newUsed, limit: maxReq, actionMode: tier.actionMode, scopeId });
+      const status = (used >= maxReq && tier.action_mode === 'transparent') ? 'throttled' : 'pass';
+      tierResults.push({ tier: tier.tier, scope: tier.scope, status, used: newUsed, limit: maxReq, actionMode: tier.action_mode, scopeId });
     }
   });
 
@@ -483,54 +531,39 @@ function prependLogEntry(n, apiName, email, wallet, result) {
 
   const now = new Date();
   const ts  = now.toTimeString().slice(0,8) + '.' + String(now.getMilliseconds()).padStart(3,'0');
-  const overall = result.allowed ? 'ALLOWED' : 'RATE LIMITED';
-  const overallCls = result.allowed
-    ? 'bg-emerald-50 text-emerald-700'
-    : 'bg-red-50 text-red-600';
+  const overall    = result.allowed ? 'ALLOWED' : 'RATE LIMITED';
+  const overallCls = result.allowed ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600';
 
   const STATUS_TEXT = { pass: 'PASS', blocked: 'BLOCKED', throttled: 'THROTTLED', skipped: 'SKIP' };
   const STATUS_CLS  = { pass: 'text-emerald-600', blocked: 'text-red-500 font-semibold', throttled: 'text-amber-600 font-semibold', skipped: 'text-stone-400' };
 
+  const tiers = tierCache[apiName] || [];
   const tierLines = result.tierResults.map(r => {
     if (r.status === 'skipped') {
       return `<div>T${r.tier} ${r.scope} → <span class="${STATUS_CLS.skipped}">SKIP</span> (disabled)</div>`;
     }
-    const winStr = r.tier <= result.tierResults.length
-      ? (() => {
-          const tier = config.apis[apiName].tiers[r.tier - 1];
-          if (!tier) return '';
-          if (tier.unit === 'daily') return 'today';
-          return `in ${tier.window}${({seconds:'s',minutes:'m',hours:'h'}[tier.unit]||'')}`;
-        })()
-      : '';
+    const t = tiers[r.tier - 1];
+    const winStr = t ? (t.unit === 'daily' ? 'today' : `in ${t.window}${({seconds:'s',minutes:'m',hours:'h'}[t.unit]||'')}`) : '';
     const scopeDisplay = r.scopeId ? `<span class="${r.scope === 'email' ? 'text-blue-500' : 'text-amber-600'}">${r.scopeId}</span> · ` : '';
     return `<div>T${r.tier} ${r.scope} → ${scopeDisplay}<span class="${STATUS_CLS[r.status]||''}">${STATUS_TEXT[r.status]||r.status}</span> (${r.used}/${r.limit} ${winStr})</div>`;
   }).join('');
 
-  const $entry = $(`
-    <div class="border-b border-stone-50 py-2.5 px-4 font-mono text-xs hover:bg-stone-50/50 transition-colors">
+  $('#log-entries').prepend($(`
+    <div class="log-row border-b border-stone-100 py-2 px-4 font-mono text-xs hover:bg-stone-50/80 transition-colors">
       <div class="flex items-center justify-between mb-1">
-        <span class="text-stone-400">[${ts}] <span class="text-stone-600 font-semibold">#${n}</span> ${apiName} · <span class="text-blue-500">${email || '—'}</span> · <span class="text-amber-600">${wallet || '—'}</span></span>
-        <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold ${overallCls}">${overall}</span>
+        <span class="text-stone-400"><span class="text-stone-500">${ts}</span> <span class="text-stone-600 font-semibold">#${n}</span> <span class="text-stone-500">${apiName}</span> · <span class="text-blue-500">${email || '—'}</span> · <span class="text-amber-600 font-mono">${wallet || '—'}</span></span>
+        <span class="px-2 py-0.5 rounded text-[10px] font-bold ${overallCls} flex-shrink-0 ml-3">${overall}</span>
       </div>
-      <div class="text-stone-400 text-[10px] space-y-0.5 pl-2">${tierLines}</div>
-    </div>`);
+      <div class="text-stone-400 text-[10px] space-y-0.5 pl-1">${tierLines}</div>
+    </div>`));
 
-  $('#log-entries').prepend($entry);
-  updateSummary();
+  $('#req-badge').text(`${n} request${n !== 1 ? 's' : ''}`);
 }
 
 // ═══════════════════════════════════════════════
-//  UPDATE LOG BADGE
+//  RUN TEST  (async step loop)
 // ═══════════════════════════════════════════════
-function updateSummary() {
-  $('#req-badge').text(`${reqCount} request${reqCount !== 1 ? 's' : ''}`);
-}
-
-// ═══════════════════════════════════════════════
-//  RUN TEST
-// ═══════════════════════════════════════════════
-function runTest() {
+async function runTest() {
   const apiName = $('#api-select').val();
   const email   = $('#tester-email').val().trim();
   const wallet  = $('#tester-wallet').val().trim();
@@ -539,13 +572,11 @@ function runTest() {
 
   if (!apiName) return;
 
-  // Validate scope identifiers
   const missing = [];
   if (!email)  missing.push('email (T1)');
   if (!wallet) missing.push('wallet (T2 & T3)');
   if (missing.length) {
-    const msg = `${missing.join(' and ')} required to track usage.`;
-    $('#scope-warning-msg').text(msg);
+    $('#scope-warning-msg').text(`${missing.join(' and ')} required to track usage.`);
     $('#scope-warning').removeClass('hidden');
     if (!email)  $('#tester-email').addClass('border-amber-400 ring-1 ring-amber-300');
     if (!wallet) $('#tester-wallet').addClass('border-amber-400 ring-1 ring-amber-300');
@@ -562,20 +593,22 @@ function runTest() {
   $('#stop-btn').removeClass('hidden');
   $('#tester-status').text('Running…');
 
-  function step() {
+  async function step() {
     if (stopFlag || fired >= total) {
       running = false;
       $('#run-btn').removeClass('hidden');
       $('#stop-btn').addClass('hidden');
-      $('#tester-status').text(stopFlag ? `Stopped after ${fired} request${fired!==1?'s':''}` : `Done — ${fired} request${fired!==1?'s':''} fired`);
+      $('#tester-status').text(stopFlag
+        ? `Stopped after ${fired} request${fired!==1?'s':''}`
+        : `Done — ${fired} request${fired!==1?'s':''} fired`);
       return;
     }
 
     fired++;
     reqCount++;
-    const result = fireRequest(apiName, email, wallet);
+    const result = await fireRequest(apiName, email, wallet);
     prependLogEntry(reqCount, apiName, email, wallet, result);
-    updateTierCards(apiName);
+    await updateTierCards(apiName);
 
     runTimer = setTimeout(step, delay);
   }
@@ -586,50 +619,54 @@ function runTest() {
 // ═══════════════════════════════════════════════
 //  CLEAR ALL USAGE
 // ═══════════════════════════════════════════════
-function clearAllUsage() {
+async function clearAllUsage() {
   localStorage.removeItem(USAGE_KEY);
+  resolvedCache = {}; // also clear resolved cache so tier cards re-fetch
   const apiName = $('#api-select').val();
-  buildTierStatusCards(apiName);
-  updateTierCards(apiName);
+  await buildTierStatusCards(apiName);
+  await updateTierCards(apiName);
   $('#tester-status').text('Usage cleared');
 }
 
 // ═══════════════════════════════════════════════
 //  INIT
 // ═══════════════════════════════════════════════
-$(function() {
-  loadConfig();
+$(async function() {
+  try {
+    await fetchAPIList();
+  } catch(e) {
+    $('#config-summary').html('<p class="text-red-400 italic text-[10px]">Could not connect to server</p>');
+  }
+
   populateApiSelect();
 
-  const firstApi = Object.keys(config.apis)[0] || '';
+  const firstApi = apiGroups.length ? apiGroups[0].apis[0]?.name : '';
   if (firstApi) {
     $('#api-select').val(firstApi);
-    buildTierStatusCards(firstApi);
-    updateConfigSummary();
-    updateTierCards(firstApi);
+    await buildTierStatusCards(firstApi);
+    await updateConfigSummary();
+    await updateTierCards(firstApi);
   }
 
   // API select change
-  $('#api-select').on('change', function() {
+  $('#api-select').on('change', async function() {
     const apiName = $(this).val();
-    buildTierStatusCards(apiName);
-    updateConfigSummary();
-    updateTierCards(apiName);
+    await buildTierStatusCards(apiName);
+    await updateConfigSummary();
+    await updateTierCards(apiName);
   });
 
-  // Input changes → refresh tier cards + clear validation state
-  $('#tester-email, #tester-wallet').on('input', function() {
+  // Input changes → refresh tier cards
+  $('#tester-email, #tester-wallet').on('input', async function() {
     $(this).removeClass('border-amber-400 ring-1 ring-amber-300');
     const email  = $('#tester-email').val().trim();
     const wallet = $('#tester-wallet').val().trim();
     if (email && wallet) $('#scope-warning').addClass('hidden');
-    updateTierCards($('#api-select').val());
+    await updateTierCards($('#api-select').val());
   });
 
   // Run button
-  $('#run-btn').on('click', function() {
-    if (!running) runTest();
-  });
+  $('#run-btn').on('click', function() { if (!running) runTest(); });
 
   // Stop button
   $('#stop-btn').on('click', function() {
@@ -645,25 +682,19 @@ $(function() {
     $('#log-entries').empty();
     $('#log-empty').show();
     reqCount = 0;
-    updateSummary();
-  });
-
-  // Listen for storage changes from index.html (cross-tab config updates)
-  window.addEventListener('storage', (e) => {
-    if (e.key === CONFIG_KEY) {
-      loadConfig();
-      populateApiSelect();
-      const apiName = $('#api-select').val();
-      buildTierStatusCards(apiName);
-      updateConfigSummary();
-      updateTierCards(apiName);
-    }
+    $('#req-badge').text('0 requests');
   });
 
   // Poll tier cards every 4s (rolling window expiry)
-  setInterval(() => {
-    updateTierCards($('#api-select').val());
+  setInterval(async () => {
+    resolvedCache = {}; // let rolling windows re-evaluate fresh limits
+    await updateTierCards($('#api-select').val());
   }, 4000);
+
+  // Sync usage across tabs (index.html writes usage too)
+  window.addEventListener('storage', async (e) => {
+    if (e.key === USAGE_KEY) await updateTierCards($('#api-select').val());
+  });
 });
 </script>
 </body>
