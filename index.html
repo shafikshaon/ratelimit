@@ -1,0 +1,1002 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>API Rate Limit Configuration</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <style>
+    /* Toggle switch */
+    .toggle-sw { position: relative; display: inline-flex; width: 42px; height: 24px; cursor: pointer; flex-shrink: 0; }
+    .toggle-sw input { opacity: 0; width: 0; height: 0; position: absolute; }
+    .toggle-track { position: absolute; inset: 0; background: #d1d5db; border-radius: 99px; transition: background 0.2s; }
+    .toggle-thumb { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; background: white; border-radius: 50%; transition: transform 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.25); }
+    .toggle-sw input:checked ~ .toggle-track { background: #f59e0b; }
+    .toggle-sw input:checked ~ .toggle-thumb { transform: translateX(18px); }
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 9px; }
+    ::-webkit-scrollbar-thumb:hover { background: #d1d5db; }
+    /* API panel slide transition */
+    #api-panel { transition: transform 0.25s cubic-bezier(.4,0,.2,1); }
+    /* Font */
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif; }
+  </style>
+</head>
+
+<body class="bg-[#edeae4] text-gray-900 antialiased h-screen overflow-hidden">
+
+<!-- ════════════════════════════════════════════
+     PAGE WRAPPER  (container spacing l/r)
+════════════════════════════════════════════ -->
+<div class="h-screen flex flex-col px-4 sm:px-6 lg:px-10 py-4 gap-3">
+
+  <!-- ── HEADER ── -->
+  <header class="bg-[#faf8f5] border border-stone-200/80 rounded-2xl flex-shrink-0 shadow-sm">
+    <div class="px-5 h-14 flex items-center gap-3">
+
+      <!-- Logo mark -->
+      <div class="flex items-center gap-2.5 mr-2">
+        <div class="w-7 h-7 rounded-lg bg-amber-500 flex items-center justify-center text-white font-bold text-[11px] flex-shrink-0">RL</div>
+        <span class="font-bold text-sm text-stone-800 hidden sm:block">RateLimiter</span>
+      </div>
+
+      <div class="w-px h-5 bg-stone-200 flex-shrink-0"></div>
+
+      <!-- Title -->
+      <div class="flex-1 min-w-0 pl-1">
+        <h1 class="font-bold text-sm sm:text-base text-stone-900 leading-tight truncate">API rate limit configuration</h1>
+        <p class="text-[11px] text-stone-400 hidden sm:block leading-tight">Per-API independent tiers &middot; Wallet + Email scoped &middot; Redis + DynamoDB</p>
+      </div>
+
+      <!-- Actions -->
+      <div class="flex items-center gap-2 flex-shrink-0">
+        <a href="tester.html" target="_blank"
+          class="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-stone-700 border border-stone-300 hover:bg-stone-100 rounded-lg transition-colors">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15,3 21,3 21,9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          Tester
+        </a>
+        <button id="save-btn"
+          class="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-amber-500 hover:bg-amber-600 rounded-lg transition-colors">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v14a2 2 0 01-2 2z"/><polyline points="17,21 17,13 7,13 7,21"/><polyline points="7,3 7,8 15,8"/></svg>
+          Save config
+        </button>
+        <!-- API panel toggle (mobile) -->
+        <button id="api-panel-toggle"
+          class="md:hidden p-1.5 rounded-lg text-stone-500 hover:bg-stone-100 transition-colors flex-shrink-0">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Toast notification -->
+  <div id="toast"
+    class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl text-xs font-semibold
+           flex items-center gap-2 shadow-lg opacity-0 pointer-events-none transition-opacity duration-300"
+    style="min-width:200px">
+  </div>
+
+  <!-- ── BODY ── -->
+  <div class="flex flex-1 overflow-hidden gap-3 min-h-0">
+
+    <!-- ── API BROWSER SIDEBAR ── -->
+    <aside id="api-panel"
+      class="fixed md:relative inset-y-0 left-0 z-30 w-56 md:w-52 lg:w-56
+             bg-[#faf8f5] border border-stone-200/80 rounded-2xl shadow-sm flex flex-col flex-shrink-0
+             -translate-x-full md:translate-x-0">
+
+      <!-- Section label -->
+      <div class="px-4 pt-3.5 pb-2 flex-shrink-0">
+        <p class="text-[10px] font-semibold uppercase tracking-widest text-stone-400">Select API</p>
+      </div>
+
+      <!-- Search -->
+      <div class="px-3 pb-2 flex-shrink-0">
+        <div class="relative">
+          <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-stone-400 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input id="api-search" type="text" placeholder="Search APIs…"
+            class="w-full pl-8 pr-3 py-2 text-xs border border-stone-200 rounded-lg bg-stone-100/60 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent placeholder-stone-400" />
+        </div>
+      </div>
+
+      <!-- API list -->
+      <div id="api-list" class="flex-1 overflow-y-auto pb-4"></div>
+    </aside>
+
+    <!-- API panel overlay (mobile) -->
+    <div id="api-overlay" class="fixed inset-0 bg-black/40 z-20 hidden md:hidden"></div>
+
+    <!-- ── MAIN CONTENT ── -->
+    <main id="main-content" class="flex-1 overflow-y-auto bg-[#edeae4] rounded-2xl min-w-0">
+      <div class="max-w-5xl mx-auto px-4 sm:px-6 py-5 space-y-4">
+        <!-- populated by JS -->
+      </div>
+    </main>
+
+  </div>
+
+  <!-- ── FOOTER ── -->
+  <footer class="bg-[#faf8f5] border border-stone-200/80 rounded-2xl flex-shrink-0 shadow-sm">
+    <div class="px-5 py-3 flex items-center justify-between gap-4">
+      <p class="text-[11px] text-stone-400">Per-API independent tiers &middot; Wallet + Email scoped &middot; Redis + DynamoDB</p>
+      <p id="footer-saved" class="text-[11px] text-stone-400 hidden">
+        <span class="text-emerald-600 font-medium">&#10003; Saved</span>
+      </p>
+    </div>
+  </footer>
+
+</div><!-- /page wrapper -->
+
+
+<script>
+// ═══════════════════════════════════════════════
+//  CONSTANTS & DEFAULTS
+// ═══════════════════════════════════════════════
+const STORAGE_KEY = 'ratelimit_config_v2';
+
+// ═══════════════════════════════════════════════
+//  USAGE STORE  (shared with tester.html via localStorage)
+// ═══════════════════════════════════════════════
+const USAGE_KEY = 'ratelimit_usage_v2';
+
+function getUsage() {
+  try { return JSON.parse(localStorage.getItem(USAGE_KEY) || '{}'); } catch(e) { return {}; }
+}
+function saveUsage(u) { localStorage.setItem(USAGE_KEY, JSON.stringify(u)); }
+
+function unitToMs(unit, val) {
+  return val * ({ seconds: 1000, minutes: 60000, hours: 3600000 }[unit] || 1000);
+}
+function getDayStart(resetHour) {
+  const now = new Date();
+  const s = new Date(now.getFullYear(), now.getMonth(), now.getDate(), resetHour || 0, 0, 0, 0);
+  if (now < s) s.setDate(s.getDate() - 1);
+  return s.getTime();
+}
+function getCurrentCount(u, key, tier) {
+  const d = u[key];
+  if (!d) return 0;
+  if (tier.unit === 'daily') {
+    const ds = getDayStart(tier.resetHour ?? 0);
+    if (!d.dayStart || d.dayStart < ds) return 0;
+    return d.count || 0;
+  }
+  const cutoff = Date.now() - unitToMs(tier.unit, tier.window);
+  return (d.requests || []).filter(ts => ts > cutoff).length;
+}
+function getWindowRemaining(tier) {
+  if (tier.unit === 'daily') {
+    const ds = getDayStart(tier.resetHour ?? 0);
+    const nextReset = ds + 86400000;
+    const diff = nextReset - Date.now();
+    const h = Math.floor(diff / 3600000), m = Math.floor((diff % 3600000) / 60000);
+    return `resets in ${h}h ${m}m`;
+  }
+  const label = { seconds: 's', minutes: 'm', hours: 'h' }[tier.unit] || '';
+  return `${tier.window}${label} rolling window`;
+}
+
+const DEFAULT_GROUPS = {
+  BALANCE: [
+    { name: 'view_current_balance', tiers: [
+        { tier:1, scope:'email',  redisKey:'rl:view_current_balance:{e}:t1',  window:10, unit:'seconds', maxRequests:7,    actionMode:'transparent', enabled:true  },
+        { tier:2, scope:'wallet', redisKey:'rl:view_current_balance:{w}:t2',  window:3,  unit:'hours',   maxRequests:100,  actionMode:'transparent', enabled:true  },
+        { tier:3, scope:'wallet', redisKey:'rl:view_current_balance:{w}:t3',  resetHour:0, unit:'daily', maxRequests:1500, actionMode:'transparent', enabled:true  },
+    ]},
+    { name: 'view_mini_statement' },
+    { name: 'view_account_summary', tiers: [
+        { tier:1, scope:'email',  redisKey:'rl:view_account_summary:{e}:t1',  window:10, unit:'seconds', maxRequests:5,    actionMode:'transparent', enabled:true  },
+        { tier:2, scope:'wallet', redisKey:'rl:view_account_summary:{w}:t2',  window:3,  unit:'hours',   maxRequests:250,  actionMode:'transparent', enabled:true  },
+        { tier:3, scope:'wallet', redisKey:'rl:view_account_summary:{w}:t3',  resetHour:0, unit:'daily', maxRequests:1800, actionMode:'transparent', enabled:true  },
+    ]},
+  ],
+  TRANSACTION: [
+    { name: 'view_recent_transaction'  },
+    { name: 'view_detail_transaction'  },
+    { name: 'view_transaction_history' },
+    { name: 'view_transaction_receipt' },
+    { name: 'export_transaction_csv'   },
+  ],
+  PAYMENT: [
+    { name: 'initiate_payment' },
+    { name: 'confirm_payment'  },
+    { name: 'cancel_payment'   },
+    { name: 'payment_status', tiers: [
+        { tier:1, scope:'email',  redisKey:'rl:payment_status:{e}:t1', window:30, unit:'seconds', maxRequests:3,   actionMode:'enforce', enabled:true },
+        { tier:2, scope:'wallet', redisKey:'rl:payment_status:{w}:t2', window:1,  unit:'minutes', maxRequests:10,  actionMode:'enforce', enabled:true },
+        { tier:3, scope:'wallet', redisKey:'rl:payment_status:{w}:t3', resetHour:0, unit:'daily', maxRequests:200, actionMode:'enforce', enabled:true },
+    ]},
+  ],
+  MERCHANT: [
+    { name: 'view_merchant_profile'    },
+    { name: 'view_merchant_stats'      },
+    { name: 'view_merchant_settlement' },
+    { name: 'update_merchant_profile'  },
+  ],
+  REPORT: [
+    { name: 'view_daily_report'   },
+    { name: 'view_monthly_report' },
+    { name: 'export_report_pdf'   },
+    { name: 'view_reconciliation' },
+  ],
+  CUSTOMER: [
+    { name: 'view_customer_profile' },
+    { name: 'view_customer_kyc'     },
+    { name: 'search_customer'       },
+  ],
+  NOTIFICATION: [
+    { name: 'view_notifications'     },
+    { name: 'mark_notification_read' },
+  ],
+  AUTH: [
+    { name: 'refresh_token' },
+    { name: 'verify_pin', tiers: [
+        { tier:1, scope:'email',  redisKey:'rl:verify_pin:{e}:t1', window:60, unit:'seconds', maxRequests:5,   actionMode:'enforce', enabled:true },
+        { tier:2, scope:'wallet', redisKey:'rl:verify_pin:{w}:t2', window:5,  unit:'minutes', maxRequests:10,  actionMode:'enforce', enabled:true },
+        { tier:3, scope:'wallet', redisKey:'rl:verify_pin:{w}:t3', resetHour:0, unit:'daily', maxRequests:20,  actionMode:'enforce', enabled:true },
+    ]},
+    { name: 'change_pin', tiers: [
+        { tier:1, scope:'email',  redisKey:'rl:change_pin:{e}:t1', window:60, unit:'seconds', maxRequests:3,  actionMode:'enforce', enabled:true },
+        { tier:2, scope:'wallet', redisKey:'rl:change_pin:{w}:t2', window:10, unit:'minutes', maxRequests:5,  actionMode:'enforce', enabled:true },
+        { tier:3, scope:'wallet', redisKey:'rl:change_pin:{w}:t3', resetHour:0, unit:'daily', maxRequests:10, actionMode:'enforce', enabled:true },
+    ]},
+  ],
+  UTILITY: [
+    { name: 'view_commission_rates' },
+    { name: 'view_service_charges'  },
+    { name: 'view_offers'           },
+    { name: 'view_faq'              },
+  ],
+  QR: [
+    { name: 'generate_qr_code' },
+    { name: 'scan_qr_code'     },
+    { name: 'view_qr_history'  },
+  ],
+  REFUND: [
+    { name: 'initiate_refund'     },
+    { name: 'view_refund_status'  },
+    { name: 'view_refund_history' },
+  ],
+  SUPPORT: [
+    { name: 'view_support_tickets'   },
+    { name: 'create_support_ticket'  },
+  ],
+};
+
+function mkDefaultTiers(name) {
+  return [
+    { tier:1, scope:'email',  redisKey:`rl:${name}:{e}:t1`, window:10, unit:'seconds', maxRequests:5,    actionMode:'transparent', enabled:false },
+    { tier:2, scope:'wallet', redisKey:`rl:${name}:{w}:t2`, window:3,  unit:'hours',   maxRequests:100,  actionMode:'transparent', enabled:false },
+    { tier:3, scope:'wallet', redisKey:`rl:${name}:{w}:t3`, resetHour:0, unit:'daily', maxRequests:1000, actionMode:'transparent', enabled:false },
+  ];
+}
+
+// ═══════════════════════════════════════════════
+//  LOCALSTORAGE
+// ═══════════════════════════════════════════════
+// Sample overrides seeded on first load
+const SAMPLE_OVERRIDES = {
+  view_current_balance: [
+    { wallet: '01700000099', t1: 'global', t2: '50',     t3: '800',  reason: 'VIP merchant – higher daily cap' },
+    { wallet: '01711223344', t1: 'global', t2: '20',     t3: '300',  reason: 'Fraud watch – reduced limits'    },
+    { wallet: '01855667788', t1: 'global', t2: 'global', t3: '2000', reason: 'Partner bank account'            },
+  ],
+  initiate_payment: [
+    { wallet: '01700000099', t1: 'global', t2: '500',   t3: '5000', reason: 'Super merchant'        },
+    { wallet: '01733445566', t1: 'global', t2: '30',    t3: '400',  reason: 'High chargeback rate'  },
+  ],
+  verify_pin: [
+    { wallet: '01711223344', t1: 'global', t2: '5', t3: '10', reason: 'Compromised device flag' },
+  ],
+  view_account_summary: [
+    { wallet: '01700000099', t1: 'global', t2: '150', t3: 'global', reason: 'Aggregator account' },
+  ],
+  view_transaction_history: [
+    { wallet: '01855667788', t1: 'global', t2: '200', t3: '3000', reason: 'Finance team bulk export' },
+  ],
+  export_transaction_csv: [
+    { wallet: '01700000099', t1: 'global', t2: '10', t3: '50', reason: 'Rate-limited export'   },
+    { wallet: '01855667788', t1: 'global', t2: '25', t3: '100', reason: 'Approved bulk access' },
+  ],
+  search_customer: [
+    { wallet: '01733445566', t1: 'global', t2: '100', t3: '500', reason: 'CX team power user' },
+  ],
+  change_pin: [
+    { wallet: '01711223344', t1: 'global', t2: '2', t3: '5', reason: 'Suspicious activity' },
+  ],
+};
+
+function buildDefaultConfig() {
+  const apis = {}, overrides = {};
+  $.each(DEFAULT_GROUPS, function(group, items) {
+    items.forEach(item => {
+      apis[item.name] = {
+        group,
+        tiers: JSON.parse(JSON.stringify(item.tiers || mkDefaultTiers(item.name)))
+      };
+      // seed sample overrides where defined, else empty
+      overrides[item.name] = SAMPLE_OVERRIDES[item.name]
+        ? JSON.parse(JSON.stringify(SAMPLE_OVERRIDES[item.name]))
+        : [];
+    });
+  });
+  return { apis, overrides };
+}
+
+function loadConfig() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  const def = buildDefaultConfig();
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(def));
+  return def;
+}
+
+function persist() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+}
+
+// ═══════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════
+let config = loadConfig();
+let selectedApiName = Object.keys(config.apis)[0];
+
+// ═══════════════════════════════════════════════
+//  BADGE HELPERS
+// ═══════════════════════════════════════════════
+const STATUS_BADGE = {
+  transparent: 'bg-blue-50 text-blue-600 ring-1 ring-blue-200',
+  mixed:       'bg-amber-50 text-amber-600 ring-1 ring-amber-200',
+  enforce:     'bg-red-50 text-red-600 ring-1 ring-red-200',
+};
+const TIER_BADGE  = ['bg-blue-100 text-blue-800', 'bg-amber-100 text-amber-800', 'bg-emerald-100 text-emerald-800'];
+const SCOPE_BADGE = { email: 'bg-pink-100 text-pink-700', wallet: 'bg-amber-100 text-amber-700' };
+
+function computeStatus(tiers) {
+  const modes = [...new Set(tiers.map(t => t.actionMode))];
+  return modes.length === 1 ? modes[0] : 'mixed';
+}
+
+// ═══════════════════════════════════════════════
+//  TOAST
+// ═══════════════════════════════════════════════
+let toastTimer;
+function showToast(msg, type) {
+  const $t = $('#toast');
+  const isOk = type !== 'error';
+  $t.removeClass().addClass(
+    `fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl text-xs font-semibold
+     flex items-center gap-2 shadow-lg transition-opacity duration-300
+     ${isOk ? 'bg-stone-900 text-white' : 'bg-red-500 text-white'}`
+  );
+  $t.html(`
+    <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+      ${isOk ? '<path d="M20 6L9 17l-5-5"/>' : '<path d="M18 6L6 18M6 6l12 12"/>'}
+    </svg>
+    <span>${msg}</span>`);
+  $t.css('opacity', 1).css('pointer-events', 'auto');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => $t.css('opacity', 0).css('pointer-events', 'none'), 2500);
+}
+
+// ═══════════════════════════════════════════════
+//  RENDER SIDEBAR
+// ═══════════════════════════════════════════════
+function renderSidebar(filter) {
+  filter = (filter || '').toLowerCase();
+  const $list = $('#api-list').empty();
+
+  $.each(DEFAULT_GROUPS, function(group, items) {
+    const filtered = filter ? items.filter(a => a.name.toLowerCase().includes(filter)) : items;
+    if (!filtered.length) return;
+
+    const $group = $('<div>');
+    $('<p>').addClass('px-4 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-stone-400')
+      .text(`${group} (${filtered.length})`).appendTo($group);
+
+    filtered.forEach(item => {
+      const apiCfg = config.apis[item.name];
+      const status = apiCfg ? computeStatus(apiCfg.tiers) : 'transparent';
+      const isActive = selectedApiName === item.name;
+
+      const $item = $('<div>')
+        .addClass(`flex items-center justify-between gap-2 mx-2 px-2 py-1.5 rounded-lg cursor-pointer transition-colors ${isActive ? 'bg-amber-50' : 'hover:bg-stone-100'}`)
+        .data('name', item.name);
+
+      const $left = $('<div>').addClass('flex items-center gap-2 min-w-0');
+      $('<div>').addClass(`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isActive ? 'bg-amber-500' : 'bg-stone-300'}`).appendTo($left);
+      $('<span>').addClass(`text-xs truncate ${isActive ? 'font-semibold text-amber-700' : 'text-stone-600'}`).text(item.name).appendTo($left);
+      $left.appendTo($item);
+
+      $('<span>').addClass(`text-[10px] font-medium px-1.5 py-0.5 rounded-full flex-shrink-0 ${STATUS_BADGE[status] || STATUS_BADGE.transparent}`)
+        .text(status).appendTo($item);
+
+      $item.on('click', function() {
+        selectedApiName = $(this).data('name');
+        renderSidebar($('#api-search').val());
+        renderMain();
+        if (window.innerWidth < 768) closeApiPanel();
+      });
+
+      $group.append($item);
+    });
+
+    $list.append($group);
+  });
+}
+
+// ═══════════════════════════════════════════════
+//  RENDER MAIN
+// ═══════════════════════════════════════════════
+function renderMain() {
+  const $wrap = $('#main-content .max-w-5xl').empty();
+
+  if (!selectedApiName || !config.apis[selectedApiName]) {
+    $wrap.append(`
+      <div class="flex flex-col items-center justify-center py-24 text-center">
+        <div class="w-14 h-14 bg-white rounded-2xl flex items-center justify-center mb-4 shadow-sm border border-stone-200">
+          <svg class="w-6 h-6 text-stone-300" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        </div>
+        <p class="text-sm font-semibold text-stone-500">Select an API to configure</p>
+        <p class="text-xs text-stone-400 mt-1">Choose from the panel on the left</p>
+      </div>`);
+    return;
+  }
+
+  const apiCfg = config.apis[selectedApiName];
+  const tiers  = apiCfg.tiers;
+
+  // ── Title card ──
+  const redisKeys = tiers.map(t =>
+    `<span class="inline-block font-mono text-[10.5px] text-stone-500 bg-stone-100 border border-stone-200 rounded-lg px-2 py-0.5">${t.redisKey}</span>`
+  ).join('');
+  $wrap.append(`
+    <div class="bg-white border border-stone-200/80 rounded-2xl px-5 py-4 shadow-sm">
+      <h2 class="font-bold text-lg text-stone-900 mb-2">${selectedApiName}</h2>
+      <div class="flex flex-wrap gap-1.5">${redisKeys}</div>
+    </div>`);
+
+  // ── Live usage preview bar ──
+  const $usageBar = $(`
+    <div class="bg-white border border-stone-200/80 rounded-2xl px-5 py-3 shadow-sm flex flex-wrap items-center gap-3">
+      <div class="flex items-center gap-1.5 text-xs font-semibold text-stone-500 flex-shrink-0">
+        <svg class="w-3.5 h-3.5 text-stone-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/>
+        </svg>
+        Live usage preview
+      </div>
+      <div class="flex items-center gap-2 flex-1 flex-wrap">
+        <!-- Email for T1 -->
+        <div class="flex items-center gap-1.5">
+          <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 flex-shrink-0">T1</span>
+          <div class="relative">
+            <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-stone-400 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+            <input id="preview-email" type="email" placeholder="Email for Tier 1…"
+              class="pl-7 pr-3 py-1.5 text-xs border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 bg-stone-50 w-44 placeholder-stone-400" />
+          </div>
+        </div>
+        <!-- Wallet for T2/T3 -->
+        <div class="flex items-center gap-1.5">
+          <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 flex-shrink-0">T2/T3</span>
+          <div class="relative">
+            <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-stone-400 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/></svg>
+            <input id="preview-wallet" type="text" placeholder="Wallet for Tier 2 & 3…"
+              class="pl-7 pr-3 py-1.5 text-xs border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 bg-stone-50 w-48 placeholder-stone-400" />
+          </div>
+        </div>
+      </div>
+      <span id="usage-updated" class="text-[10px] text-stone-400 hidden">Updated just now</span>
+    </div>`);
+  $wrap.append($usageBar);
+
+  // auto-refresh usage when inputs change
+  $usageBar.find('#preview-email, #preview-wallet').on('input', () => refreshUsageOnCards(selectedApiName));
+
+  // ── Tier cards ──
+  const $grid = $('<div>').addClass('grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4');
+  tiers.forEach((t, i) => $grid.append(buildTierCard(t, i)));
+  $wrap.append($grid);
+
+  // ── Overrides ──
+  $wrap.append(buildOverridesCard(selectedApiName));
+}
+
+// ═══════════════════════════════════════════════
+//  TIER CARD
+// ═══════════════════════════════════════════════
+function buildTierCard(t, idx) {
+  const isDaily = t.unit === 'daily';
+
+  const windowField = isDaily ? `
+    <div class="space-y-1">
+      <label class="text-[11px] font-medium text-stone-500">Reset hour (0-23)</label>
+      <input data-field="resetHour" type="number" min="0" max="23" value="${t.resetHour ?? 0}"
+        class="w-full px-3 py-2 text-sm font-semibold border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white" />
+    </div>
+    <div class="space-y-1">
+      <label class="text-[11px] font-medium text-stone-500">Window</label>
+      <div class="relative">
+        <select data-field="windowDaily"
+          class="w-full px-3 py-2 text-sm font-semibold border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white appearance-none pr-8">
+          <option ${t.windowDaily==='24h fixed daily'||!t.windowDaily?'selected':''}>24h fixed daily</option>
+          <option ${t.windowDaily==='12h fixed'?'selected':''}>12h fixed</option>
+        </select>
+        <svg class="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-stone-400 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6,9 12,15 18,9"/></svg>
+      </div>
+    </div>` : `
+    <div class="space-y-1">
+      <label class="text-[11px] font-medium text-stone-500">Window</label>
+      <input data-field="window" type="number" min="1" value="${t.window}"
+        class="w-full px-3 py-2 text-sm font-semibold border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white" />
+    </div>
+    <div class="space-y-1">
+      <label class="text-[11px] font-medium text-stone-500">Unit</label>
+      <div class="relative">
+        <select data-field="unit"
+          class="w-full px-3 py-2 text-sm font-semibold border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white appearance-none pr-8">
+          ${['seconds','minutes','hours'].map(u => `<option ${u===t.unit?'selected':''}>${u}</option>`).join('')}
+        </select>
+        <svg class="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-stone-400 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6,9 12,15 18,9"/></svg>
+      </div>
+    </div>`;
+
+  const $card = $(`
+    <div class="bg-white border border-stone-200/80 rounded-2xl p-4 shadow-sm flex flex-col gap-3.5">
+      <div class="flex items-center gap-2">
+        <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full ${TIER_BADGE[idx]}">Tier ${t.tier}</span>
+        <span class="text-[11px] font-medium px-2 py-0.5 rounded-full ${SCOPE_BADGE[t.scope]||'bg-stone-100 text-stone-600'}">${t.scope}</span>
+      </div>
+      <div class="font-mono text-[10.5px] text-stone-500 bg-stone-50 border border-stone-100 rounded-xl px-3 py-2 break-all leading-relaxed">${t.redisKey}</div>
+      ${windowField}
+      <div class="space-y-1">
+        <label class="text-[11px] font-medium text-stone-500">Max requests</label>
+        <input data-field="maxRequests" type="number" min="1" value="${t.maxRequests}"
+          class="w-full px-3 py-2 text-sm font-semibold border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white" />
+      </div>
+      <div class="space-y-1">
+        <label class="text-[11px] font-medium text-stone-500">Action mode</label>
+        <div class="flex border border-stone-200 rounded-xl overflow-hidden">
+          <button class="action-btn flex-1 py-2 text-xs transition-colors
+            ${t.actionMode==='transparent' ? 'bg-amber-50 text-amber-700 font-semibold' : 'bg-white text-stone-500 hover:bg-stone-50'}"
+            data-mode="transparent">Transparent</button>
+          <button class="action-btn flex-1 py-2 text-xs border-l border-stone-200 transition-colors
+            ${t.actionMode==='enforce' ? 'bg-amber-50 text-amber-700 font-semibold' : 'bg-white text-stone-500 hover:bg-stone-50'}"
+            data-mode="enforce">Enforce</button>
+        </div>
+      </div>
+      <div class="flex items-center justify-between pt-1 border-t border-stone-100">
+        <span class="text-xs font-medium text-stone-600">Enabled</span>
+        <label class="toggle-sw">
+          <input type="checkbox" ${t.enabled ? 'checked' : ''} />
+          <div class="toggle-track"></div>
+          <div class="toggle-thumb"></div>
+        </label>
+      </div>
+    </div>`);
+
+  // ── Live field bindings ──
+  function tierRef() { return config.apis[selectedApiName].tiers[idx]; }
+
+  $card.find('[data-field="window"]').on('input', function() {
+    tierRef().window = Math.max(1, parseInt($(this).val()) || 1);
+    persist();
+  });
+  $card.find('[data-field="unit"]').on('change', function() {
+    tierRef().unit = $(this).val();
+    persist();
+  });
+  $card.find('[data-field="resetHour"]').on('input', function() {
+    tierRef().resetHour = Math.min(23, Math.max(0, parseInt($(this).val()) || 0));
+    persist();
+  });
+  $card.find('[data-field="windowDaily"]').on('change', function() {
+    tierRef().windowDaily = $(this).val();
+    persist();
+  });
+  $card.find('[data-field="maxRequests"]').on('input', function() {
+    tierRef().maxRequests = Math.max(1, parseInt($(this).val()) || 1);
+    persist();
+  });
+
+  $card.find('.action-btn').on('click', function() {
+    const mode = $(this).data('mode');
+    tierRef().actionMode = mode;
+    persist();
+    // Update button styles
+    $card.find('.action-btn').removeClass('bg-amber-50 text-amber-700 font-semibold').addClass('bg-white text-stone-500');
+    $(this).removeClass('bg-white text-stone-500').addClass('bg-amber-50 text-amber-700 font-semibold');
+    // Refresh sidebar badge live
+    renderSidebar($('#api-search').val());
+  });
+
+  $card.find('.toggle-sw input').on('change', function() {
+    tierRef().enabled = $(this).is(':checked');
+    persist();
+  });
+
+  // ── Usage display ──
+  const $usageSection = $('<div>').addClass('pt-2.5 border-t border-stone-100 space-y-1.5')
+    .attr('data-usage-idx', idx);
+  $('<p>').addClass('text-[10px] font-semibold uppercase tracking-wide text-stone-400').text('Usage').appendTo($usageSection);
+  const $barTrack = $('<div>').addClass('w-full bg-stone-100 rounded-full h-1.5').appendTo($usageSection);
+  $('<div>').addClass('h-1.5 rounded-full transition-all duration-500 bg-stone-200').css('width','0%')
+    .attr('id', `ubar-${idx}`).appendTo($barTrack);
+  $('<p>').addClass('text-[10px] text-stone-400').attr('id', `utxt-${idx}`).text('Enter wallet/email above to see usage').appendTo($usageSection);
+  $card.append($usageSection);
+
+  return $card;
+}
+
+// ═══════════════════════════════════════════════
+//  REFRESH USAGE ON TIER CARDS
+// ═══════════════════════════════════════════════
+function refreshUsageOnCards(apiName) {
+  if (!apiName || !config.apis[apiName]) return;
+  const email  = $('#preview-email').val().trim();
+  const wallet = $('#preview-wallet').val().trim();
+  if (!email && !wallet) {
+    $('[data-usage-idx]').each(function(i) {
+      $(`#ubar-${i}`).css('width','0%').removeClass('bg-amber-400 bg-red-400').addClass('bg-stone-200');
+      $(`#utxt-${i}`).text('Enter wallet/email above to see usage');
+    });
+    return;
+  }
+  const u = getUsage();
+  const tiers = config.apis[apiName].tiers;
+
+  tiers.forEach((tier, i) => {
+    const scopeId = i === 0 ? email : wallet;
+    if (!scopeId) {
+      $(`#ubar-${i}`).css('width','0%').removeClass('bg-amber-400 bg-red-400').addClass('bg-stone-200');
+      $(`#utxt-${i}`).text(i === 0 ? 'Enter email above' : 'Enter wallet above');
+      return;
+    }
+    const usageKey = `${apiName}|t${tier.tier}|${scopeId}`;
+
+    // Resolve effective max (check overrides)
+    let maxReq = tier.maxRequests;
+    const ovr = (config.overrides[apiName] || []).find(r => r.wallet === wallet);
+    if (ovr) {
+      const ovrVal = [ovr.t1, ovr.t2, ovr.t3][i];
+      if (ovrVal && ovrVal !== 'global') maxReq = parseInt(ovrVal) || maxReq;
+    }
+
+    const used = getCurrentCount(u, usageKey, tier);
+    const pct  = maxReq > 0 ? Math.min(100, Math.round(used / maxReq * 100)) : 0;
+    const barColor = pct >= 100 ? 'bg-red-400' : pct >= 75 ? 'bg-amber-400' : 'bg-emerald-400';
+
+    $(`#ubar-${i}`).css('width', `${pct}%`).removeClass('bg-stone-200 bg-emerald-400 bg-amber-400 bg-red-400').addClass(barColor);
+    $(`#utxt-${i}`).html(
+      `<span class="font-semibold text-stone-600">${used}</span> / ${maxReq} requests used &nbsp;·&nbsp; ${getWindowRemaining(tier)}` +
+      (pct >= 100 ? ' &nbsp;<span class="text-red-500 font-semibold">LIMIT REACHED</span>' : '')
+    );
+  });
+
+  $('#usage-updated').removeClass('hidden').text(`Updated ${new Date().toLocaleTimeString()}`);
+}
+
+// ═══════════════════════════════════════════════
+//  OVERRIDES CARD
+// ═══════════════════════════════════════════════
+function buildOverridesCard(apiName) {
+  if (!config.overrides[apiName]) config.overrides[apiName] = [];
+
+  const $card = $(`
+    <div class="bg-white border border-stone-200/80 rounded-2xl p-5 shadow-sm space-y-5">
+
+      <!-- Header -->
+      <div>
+        <div class="flex items-baseline gap-2 mb-1">
+          <span class="text-[10px] font-semibold uppercase tracking-widest text-stone-400">Per-wallet overrides</span>
+          <span class="text-[10px] text-stone-400">— ${apiName}</span>
+        </div>
+        <p class="text-xs text-stone-500">Override T2 and T3 limits for specific wallets on this API only. T1 is email-scoped — override at email level instead.</p>
+      </div>
+
+      <!-- ── Wallet State Lookup ── -->
+      <div class="border border-stone-100 rounded-xl overflow-hidden">
+        <div class="bg-stone-50 px-4 py-2.5 border-b border-stone-100 flex items-center justify-between gap-3">
+          <span class="text-[11px] font-semibold text-stone-500 uppercase tracking-wide">Lookup wallet state</span>
+          <div class="flex items-center gap-2 flex-1 max-w-xs">
+            <div class="relative flex-1">
+              <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-stone-400 pointer-events-none"
+                fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+              </svg>
+              <input id="lookup-wallet" type="text" placeholder="Enter wallet number…"
+                class="w-full pl-8 pr-3 py-1.5 text-xs border border-stone-200 rounded-lg bg-white
+                       focus:outline-none focus:ring-2 focus:ring-amber-400 placeholder-stone-400" />
+            </div>
+            <button id="lookup-btn"
+              class="px-3 py-1.5 text-xs font-semibold text-white bg-stone-700 hover:bg-stone-800 rounded-lg transition-colors flex-shrink-0">
+              Search
+            </button>
+            <button id="lookup-clear" class="hidden text-stone-400 hover:text-stone-600 p-1 rounded transition-colors">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+        </div>
+        <div id="lookup-result" class="hidden px-4 py-3.5"></div>
+      </div>
+
+      <!-- ── Add Override Form ── -->
+      <div>
+        <p class="text-[11px] font-semibold text-stone-400 uppercase tracking-wide mb-3">Add override</p>
+        <div class="flex flex-wrap gap-2 items-end">
+          <div class="flex-1 min-w-[130px] space-y-1">
+            <label class="text-[11px] font-medium text-stone-500">Wallet number</label>
+            <input id="ov-wallet" type="text" placeholder="01700000099"
+              class="w-full px-3 py-2 text-xs border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white" />
+          </div>
+          <div class="flex-1 min-w-[90px] space-y-1">
+            <label class="text-[11px] font-medium text-stone-500">T1 limit</label>
+            <input id="ov-t1" type="text" placeholder="global"
+              class="w-full px-3 py-2 text-xs border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white" />
+          </div>
+          <div class="flex-1 min-w-[90px] space-y-1">
+            <label class="text-[11px] font-medium text-stone-500">T2 limit</label>
+            <input id="ov-t2" type="text" placeholder="global"
+              class="w-full px-3 py-2 text-xs border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white" />
+          </div>
+          <div class="flex-1 min-w-[90px] space-y-1">
+            <label class="text-[11px] font-medium text-stone-500">T3 limit</label>
+            <input id="ov-t3" type="text" placeholder="global"
+              class="w-full px-3 py-2 text-xs border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white" />
+          </div>
+          <div class="flex-1 min-w-[100px] space-y-1">
+            <label class="text-[11px] font-medium text-stone-500">Reason</label>
+            <input id="ov-reason" type="text" placeholder="note"
+              class="w-full px-3 py-2 text-xs border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white" />
+          </div>
+          <button id="ov-add"
+            class="px-4 py-2 text-xs font-semibold text-white bg-amber-500 hover:bg-amber-600 rounded-lg transition-colors flex-shrink-0 self-end">
+            Add
+          </button>
+        </div>
+      </div>
+
+      <!-- ── Override Table ── -->
+      <div class="overflow-x-auto rounded-xl border border-stone-100">
+        <table class="w-full text-xs min-w-[520px]">
+          <thead>
+            <tr class="bg-stone-50 border-b border-stone-100">
+              <th class="text-left px-4 py-2.5 text-stone-500 font-semibold">Wallet</th>
+              <th class="text-left px-4 py-2.5 text-stone-500 font-semibold">T1 limit</th>
+              <th class="text-left px-4 py-2.5 text-stone-500 font-semibold">T2 limit</th>
+              <th class="text-left px-4 py-2.5 text-stone-500 font-semibold">T3 limit</th>
+              <th class="text-left px-4 py-2.5 text-stone-500 font-semibold">Reason</th>
+              <th class="px-4 py-2.5"></th>
+            </tr>
+          </thead>
+          <tbody id="ov-tbody"></tbody>
+        </table>
+      </div>
+    </div>`);
+
+  function refreshTable() {
+    const $tbody = $card.find('#ov-tbody').empty();
+    const rows = config.overrides[apiName];
+    if (!rows.length) {
+      $('<tr>').append(
+        $('<td colspan="6" class="py-8 text-center text-stone-400 text-xs">').text('No wallet overrides for this API')
+      ).appendTo($tbody);
+    } else {
+      rows.forEach((r, i) => {
+        const $del = $('<button>')
+          .addClass('text-stone-300 hover:text-red-500 transition-colors p-1 rounded')
+          .html(`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>`)
+          .on('click', function() {
+            const deletedWallet = config.overrides[apiName][i].wallet;
+            config.overrides[apiName].splice(i, 1);
+            persist();
+            refreshTable();
+            if ($card.find('#lookup-wallet').val().trim() === deletedWallet) doLookup();
+            showToast('Override removed', 'ok');
+          });
+
+        $('<tr class="border-t border-stone-50 hover:bg-stone-50/60 transition-colors">').append(
+          $('<td class="px-4 py-2.5 font-mono text-stone-700">').text(r.wallet),
+          $('<td class="px-4 py-2.5 text-stone-500">').text(r.t1),
+          $('<td class="px-4 py-2.5 text-stone-500">').text(r.t2),
+          $('<td class="px-4 py-2.5 text-stone-500">').text(r.t3),
+          $('<td class="px-4 py-2.5 text-stone-400">').text(r.reason),
+          $('<td class="px-3 py-2.5 text-right">').append($del)
+        ).appendTo($tbody);
+      });
+    }
+  }
+
+  // ── Wallet Lookup ──
+  function resolveWalletState(walletNum) {
+    const tiers = config.apis[apiName] ? config.apis[apiName].tiers : [];
+    const override = (config.overrides[apiName] || []).find(r => r.wallet === walletNum);
+
+    return tiers.map((t, i) => {
+      const isDaily = t.unit === 'daily';
+      const globalLimit = isDaily
+        ? `${t.maxRequests} / day (resets ${t.resetHour}:00)`
+        : `${t.maxRequests} / ${t.window} ${t.unit}`;
+
+      let effectiveLimit = globalLimit;
+      let source = 'global';
+
+      if (override) {
+        const ov = [override.t1, override.t2, override.t3][i];
+        if (ov && ov !== 'global') {
+          effectiveLimit = ov;
+          source = 'override';
+        }
+      }
+
+      return { tier: t.tier, scope: t.scope, globalLimit, effectiveLimit, source, enabled: t.enabled, actionMode: t.actionMode };
+    });
+  }
+
+  function doLookup() {
+    const walletNum = $card.find('#lookup-wallet').val().trim();
+    const $result = $card.find('#lookup-result');
+
+    if (!walletNum) {
+      $card.find('#lookup-wallet').focus();
+      return;
+    }
+
+    const states = resolveWalletState(walletNum);
+    $result.empty().removeClass('hidden');
+    $card.find('#lookup-clear').removeClass('hidden');
+
+    const hasOverride = (config.overrides[apiName] || []).some(r => r.wallet === walletNum);
+
+    // Header row
+    const $header = $(`
+      <div class="flex items-center gap-2 mb-3">
+        <span class="font-mono text-xs font-semibold text-stone-700">${walletNum}</span>
+        ${hasOverride
+          ? '<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 ring-1 ring-amber-200">has override</span>'
+          : '<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-stone-100 text-stone-500">using global defaults</span>'}
+      </div>`);
+    $result.append($header);
+
+    // State grid
+    const $grid = $('<div class="grid grid-cols-1 sm:grid-cols-3 gap-2">').appendTo($result);
+    const TIER_COLORS = [
+      { bg: 'bg-blue-50', border: 'border-blue-100', label: 'text-blue-700', badge: 'bg-blue-100 text-blue-800' },
+      { bg: 'bg-amber-50', border: 'border-amber-100', label: 'text-amber-700', badge: 'bg-amber-100 text-amber-800' },
+      { bg: 'bg-emerald-50', border: 'border-emerald-100', label: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-800' },
+    ];
+
+    states.forEach((s, i) => {
+      const c = TIER_COLORS[i] || TIER_COLORS[0];
+      const isOverridden = s.source === 'override';
+      const enabledDot = s.enabled
+        ? '<span class="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0"></span>'
+        : '<span class="w-1.5 h-1.5 rounded-full bg-stone-300 flex-shrink-0"></span>';
+
+      const $tile = $(`
+        <div class="rounded-xl border ${c.border} ${c.bg} p-3 space-y-2">
+          <div class="flex items-center justify-between gap-1">
+            <div class="flex items-center gap-1.5">
+              ${enabledDot}
+              <span class="text-[11px] font-semibold ${c.label}">Tier ${s.tier}</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded-full ${c.badge}">${s.scope}</span>
+            </div>
+            <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full
+              ${s.actionMode === 'enforce' ? 'bg-red-50 text-red-600' : 'bg-stone-100 text-stone-500'}">
+              ${s.actionMode}
+            </span>
+          </div>
+          <div>
+            <p class="text-[10px] text-stone-400 mb-0.5">Effective limit</p>
+            <p class="text-xs font-semibold text-stone-800 font-mono">${s.effectiveLimit}</p>
+          </div>
+          ${isOverridden ? `
+          <div>
+            <p class="text-[10px] text-stone-400 mb-0.5">Global default</p>
+            <p class="text-[10px] text-stone-500 font-mono line-through">${s.globalLimit}</p>
+          </div>` : ''}
+          <div class="pt-1 border-t ${c.border}">
+            <span class="text-[10px] ${isOverridden ? 'text-amber-600 font-semibold' : 'text-stone-400'}">
+              ${isOverridden ? '↑ overridden' : 'global default'}
+            </span>
+          </div>
+        </div>`);
+      $grid.append($tile);
+    });
+  }
+
+  $card.find('#lookup-btn').on('click', doLookup);
+  $card.find('#lookup-wallet').on('keydown', function(e) {
+    if (e.key === 'Enter') doLookup();
+  });
+  $card.find('#lookup-clear').on('click', function() {
+    $card.find('#lookup-wallet').val('');
+    $card.find('#lookup-result').addClass('hidden').empty();
+    $(this).addClass('hidden');
+  });
+
+  $card.find('#ov-add').on('click', function() {
+    const wallet = $card.find('#ov-wallet').val().trim();
+    if (!wallet) {
+      $card.find('#ov-wallet').focus().addClass('ring-2 ring-red-400');
+      setTimeout(() => $card.find('#ov-wallet').removeClass('ring-2 ring-red-400'), 1500);
+      return;
+    }
+    // Duplicate check
+    if (config.overrides[apiName].some(r => r.wallet === wallet)) {
+      showToast('Wallet already has an override', 'error');
+      return;
+    }
+    config.overrides[apiName].push({
+      wallet,
+      t1: $card.find('#ov-t1').val().trim() || 'global',
+      t2: $card.find('#ov-t2').val().trim() || 'global',
+      t3: $card.find('#ov-t3').val().trim() || 'global',
+      reason: $card.find('#ov-reason').val().trim() || ''
+    });
+    persist();
+    $card.find('#ov-wallet,#ov-t1,#ov-t2,#ov-t3,#ov-reason').val('');
+    refreshTable();
+    // refresh lookup if this wallet is currently being viewed
+    if ($card.find('#lookup-wallet').val().trim() === wallet) doLookup();
+    showToast('Override added', 'ok');
+  });
+
+  refreshTable();
+  return $card;
+}
+
+// ═══════════════════════════════════════════════
+//  API PANEL TOGGLE (mobile)
+// ═══════════════════════════════════════════════
+function openApiPanel() {
+  $('#api-panel').removeClass('-translate-x-full').addClass('translate-x-0');
+  $('#api-overlay').removeClass('hidden');
+}
+function closeApiPanel() {
+  $('#api-panel').addClass('-translate-x-full').removeClass('translate-x-0');
+  $('#api-overlay').addClass('hidden');
+}
+
+// ═══════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════
+$(function() {
+  renderSidebar();
+  renderMain();
+
+  // Refresh usage when tester page writes to localStorage (cross-tab)
+  window.addEventListener('storage', (e) => {
+    if (e.key === USAGE_KEY) refreshUsageOnCards(selectedApiName);
+  });
+  // Also poll every 4s in case same tab
+  setInterval(() => refreshUsageOnCards(selectedApiName), 4000);
+
+  // Search
+  $('#api-search').on('input', function() { renderSidebar($(this).val()); });
+
+  // Save button — explicit persist + toast
+  $('#save-btn').on('click', function() {
+    persist();
+    showToast('Configuration saved', 'ok');
+  });
+
+  // Mobile panel
+  $('#api-panel-toggle').on('click', function() {
+    if ($('#api-panel').hasClass('-translate-x-full')) openApiPanel(); else closeApiPanel();
+  });
+  $('#api-overlay').on('click', closeApiPanel);
+
+  $(window).on('resize', function() {
+    if (window.innerWidth >= 768) closeApiPanel();
+  });
+});
+</script>
+</body>
+</html>
