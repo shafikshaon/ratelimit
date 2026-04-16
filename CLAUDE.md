@@ -8,9 +8,47 @@ A browser-based prototype for configuring and testing a multi-tier API rate limi
 
 ## Running the App
 
-No build system. Open files directly in a browser:
-- `index.html` — Rate limit configuration UI
-- `tester.html` — Request simulation and testing tool
+**Docker (recommended):**
+```bash
+docker-compose up
+```
+Starts PostgreSQL and the Go API server with Air hot-reload. Migrations run automatically on startup.
+
+**Local Go server:**
+```bash
+cp .env.example .env
+go mod download
+air                          # hot-reload via air
+# or: go run ./cmd/server
+```
+
+**Frontend only:** Open `index.html` or `tester.html` directly in a browser (no server needed).
+
+## API
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/apis` | List all APIs grouped by category |
+
+Response shape:
+```json
+{
+  "data": [
+    {
+      "name": "BALANCE",
+      "count": 3,
+      "apis": [
+        {
+          "id": 1,
+          "name": "view_current_balance",
+          "group": "BALANCE",
+          "tiers": [{ "tier": 1, "scope": "email", "unit": "seconds", ... }]
+        }
+      ]
+    }
+  ]
+}
+```
 
 ## Architecture
 
@@ -72,11 +110,29 @@ No override: use tier default
 - `buildOverridesCard(apiName)` — Override management: lookup, add, edit, delete
 - `refreshUsageOnCards(apiName)` — Updates live usage bars
 
+## Go Project Structure
+
+```
+cmd/server/
+  main.go       — server bootstrap, graceful shutdown
+  migrate.go    — runs SQL files from migrations/ at startup
+internal/
+  config/       — env-based config (DB_HOST, SERVER_PORT, etc.)
+  database/     — pgxpool connection setup
+  handler/      — Gin HTTP handlers
+  model/        — shared structs (API, Tier, APIGroup)
+  repository/   — SQL queries against postgres
+migrations/
+  001_init.sql  — schema creation + idempotent seed data
+```
+
+Migrations are idempotent (`ON CONFLICT DO NOTHING`) and run on every startup from `migrations/` in filename order.
+
 ## Tech Stack
 
-- Vanilla JavaScript (ES6) + jQuery 3.7.1
-- Tailwind CSS (CDN)
-- No bundler, no npm, no backend
+**Backend:** Go 1.23 · Gin · pgx/v5 · Air (hot-reload)  
+**Frontend:** Vanilla JavaScript (ES6) + jQuery 3.7.1 · Tailwind CSS (CDN)  
+**Infrastructure:** PostgreSQL 16 · Docker Compose
 
 ## Backend Integration (Not Yet Implemented)
 

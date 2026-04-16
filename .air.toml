@@ -1,0 +1,24 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go build -o ./tmp/main ./cmd/server"
+  bin = "./tmp/main"
+  include_ext = ["go", "toml", "sql"]
+  exclude_dir = ["tmp", "vendor", "migrations"]
+  delay = 1000
+  kill_delay = "0.5s"
+  rerun = false
+
+[log]
+  time = false
+  main_only = false
+
+[color]
+  main    = "magenta"
+  watcher = "cyan"
+  build   = "yellow"
+  runner  = "green"
+
+[misc]
+  clean_on_exit = true
