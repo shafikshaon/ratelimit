@@ -326,10 +326,19 @@ func windowSeconds(window *int, unit string) int64 {
 	return int64(*window) * mult[unit]
 }
 
-// nextDailyReset returns the Unix timestamp of the next reset_hour in UTC.
+// bdtLocation is Asia/Dhaka (UTC+6). Loaded once at startup.
+var bdtLocation = func() *time.Location {
+	loc, err := time.LoadLocation("Asia/Dhaka")
+	if err != nil {
+		loc = time.FixedZone("BDT", 6*3600)
+	}
+	return loc
+}()
+
+// nextDailyReset returns the Unix timestamp of the next reset_hour in Asia/Dhaka time.
 func nextDailyReset(resetHour int) int64 {
-	now := time.Now().UTC()
-	reset := time.Date(now.Year(), now.Month(), now.Day(), resetHour, 0, 0, 0, time.UTC)
+	now := time.Now().In(bdtLocation)
+	reset := time.Date(now.Year(), now.Month(), now.Day(), resetHour, 0, 0, 0, bdtLocation)
 	if !now.Before(reset) {
 		reset = reset.Add(24 * time.Hour)
 	}
@@ -339,7 +348,7 @@ func nextDailyReset(resetHour int) int64 {
 // windowLabel returns a human-readable window description for a tier.
 func windowLabel(t model.Tier) string {
 	if t.Unit == "daily" {
-		return fmt.Sprintf("daily (resets %02d:00 UTC)", t.ResetHour)
+		return fmt.Sprintf("daily (resets %02d:00 BDT)", t.ResetHour)
 	}
 	if t.Window != nil {
 		return fmt.Sprintf("%d %s", *t.Window, t.Unit)

@@ -144,17 +144,11 @@ function formatResetIn(resetIn) {
   return `resets in ${s}s`;
 }
 
-function getWindowRemaining(tier) {
-  if (tier.unit === 'daily') {
-    const now = new Date();
-    const reset = new Date(now.getFullYear(), now.getMonth(), now.getDate(), tier.reset_hour ?? 0, 0, 0, 0);
-    if (now >= reset) reset.setDate(reset.getDate() + 1);
-    const diff = reset - now;
-    const h = Math.floor(diff / 3600000), m = Math.floor((diff % 3600000) / 60000);
-    return `resets in ${h}h ${m}m`;
-  }
-  const label = { seconds: 's', minutes: 'm', hours: 'h' }[tier.unit] || '';
-  return `${tier.window}${label} rolling window`;
+// BDT_OFFSET_MS: Asia/Dhaka is UTC+6
+const BDT_OFFSET_MS = 6 * 3600 * 1000;
+
+function nowInBDT() {
+  return new Date(Date.now() + BDT_OFFSET_MS - new Date().getTimezoneOffset() * 60000);
 }
 
 // ═══════════════════════════════════════════════
@@ -812,10 +806,10 @@ function buildOverridesCard(apiName) {
       const c = TIER_COLORS[i] || TIER_COLORS[0];
       const isDaily = rt.unit === 'daily';
       const globalLabel = isDaily
-        ? `${rt.global_max} / day (resets ${rt.reset_hour}:00)`
+        ? `${rt.global_max} / day (resets ${String(rt.reset_hour).padStart(2,'0')}:00 BDT)`
         : `${rt.global_max} / ${rt.window ?? '?'} ${rt.unit}`;
       const effectiveLabel = isDaily
-        ? `${rt.effective_max} / day (resets ${rt.reset_hour}:00)`
+        ? `${rt.effective_max} / day (resets ${String(rt.reset_hour).padStart(2,'0')}:00 BDT)`
         : `${rt.effective_max} / ${rt.window ?? '?'} ${rt.unit}`;
 
       $grid.append($(`

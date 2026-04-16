@@ -42,6 +42,45 @@ services:
       retries: 20
       start_period: 90s
 
+  # ── Viewers ──────────────────────────────────────────────────────────────────
+
+  # PostgreSQL: http://localhost:8082  (System: PostgreSQL, Server: postgres)
+  adminer:
+    image: adminer:4
+    restart: unless-stopped
+    ports:
+      - "8082:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Redis: http://localhost:5540
+  redisinsight:
+    image: redis/redisinsight:latest
+    restart: unless-stopped
+    ports:
+      - "5540:5540"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # ScyllaDB: http://localhost:3000  (Host: scylla, Port: 9042)
+  cassandra-web:
+    image: ipushc/cassandra-web
+    restart: unless-stopped
+    hostname: cassandra-web
+    ports:
+      - "3000:3000"
+    environment:
+      HOST_PORT: ":3000"
+      CASSANDRA_HOST: scylla
+      CASSANDRA_PORT: "9042"
+    depends_on:
+      scylla:
+        condition: service_healthy
+
   app:
     build: .
     ports:

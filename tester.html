@@ -345,7 +345,7 @@ async function buildTierStatusCards(apiName) {
         </div>
         <!-- Footer row -->
         <div class="flex items-center justify-between gap-2 pt-0.5 border-t border-stone-100">
-          <p class="text-[9px] text-stone-400 truncate" id="tc-win-${i}">${t.unit === 'daily' ? `daily (resets ${String(t.reset_hour??0).padStart(2,'0')}:00 UTC)` : `${t.window} ${t.unit}`}</p>
+          <p class="text-[9px] text-stone-400 truncate" id="tc-win-${i}">${t.unit === 'daily' ? `daily (resets ${String(t.reset_hour??0).padStart(2,'0')}:00 BDT)` : `${t.window} ${t.unit}`}</p>
           <span class="text-[9px] font-bold px-2 py-0.5 rounded flex-shrink-0 bg-stone-100 text-stone-400" id="tc-status-${i}">READY</span>
         </div>
       </div>`));
