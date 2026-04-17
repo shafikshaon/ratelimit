@@ -99,6 +99,8 @@ func (s *PostgresService) GetAllTiers(ctx context.Context) (map[string][]model.T
 }
 
 // GetTiers fetches the full tier configuration for a single API from PostgreSQL.
+// Returns (nil, nil) when the API name does not exist.
+// Returns ([]model.Tier{}, nil) when the API exists but has no tiers configured.
 func (s *PostgresService) GetTiers(ctx context.Context, apiName string) ([]model.Tier, error) {
 	rows, err := s.db.Query(ctx, `
 		SELECT t.id, t.tier, t.scope, t.redis_key, t.window_size, t.window_unit,
@@ -122,7 +124,21 @@ func (s *PostgresService) GetTiers(ctx context.Context, apiName string) ([]model
 		}
 		tiers = append(tiers, t)
 	}
-	return tiers, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if tiers == nil {
+		// Distinguish "API not found" from "API has no tiers".
+		var exists bool
+		if err := s.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM apis WHERE name = $1)`, apiName).Scan(&exists); err != nil {
+			return nil, err
+		}
+		if exists {
+			return []model.Tier{}, nil
+		}
+		return nil, nil
+	}
+	return tiers, nil
 }
 
 // UpdateTier writes new limits for a specific tier and returns an error if not found.

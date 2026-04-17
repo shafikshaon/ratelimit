@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -21,8 +22,6 @@ var errNotFound = errors.New("not found")
 const (
 	// maxOverrideLimit caps the per-wallet override to prevent runaway limits.
 	maxOverrideLimit = 10_000_000
-	// maxScopeIDLen caps the length of email/wallet to prevent key bloat.
-	maxScopeIDLen = 256
 )
 
 func IsNotFound(err error) bool { return errors.Is(err, errNotFound) }
@@ -167,10 +166,6 @@ func (s *APIService) Check(ctx context.Context, apiName, email, wallet string) (
 	}
 	if tiers == nil {
 		return nil, nil // API not found
-	}
-
-	if len(tiers) == 0 {
-		return nil, nil // API exists but has no tiers configured
 	}
 
 	override, err := s.resolveOverride(ctx, apiName, wallet, overrideRaw)
@@ -435,8 +430,7 @@ func resolveConfig(apiName, wallet string, tiers []model.Tier, override *model.O
 				overrideStr = override.T3
 			}
 			if overrideStr != "" && overrideStr != "global" {
-				var v int
-				if _, err := fmt.Sscanf(overrideStr, "%d", &v); err == nil && v > 0 && v <= maxOverrideLimit {
+				if v, err := strconv.Atoi(overrideStr); err == nil && v > 0 && v <= maxOverrideLimit {
 					rt.EffectiveMax = v
 					rt.Overridden = true
 				}

@@ -64,6 +64,10 @@ func (s *ScyllaService) List(ctx context.Context, apiName string, limit int, pag
 		PageSize(limit)
 
 	if pageToken != "" {
+		// Check encoded length before decoding to prevent OOM from a crafted large token.
+		if len(pageToken) > (maxPageTokenBytes*4/3)+10 {
+			return nil, "", false, fmt.Errorf("page token too large")
+		}
 		state, err := base64.StdEncoding.DecodeString(pageToken)
 		if err != nil {
 			return nil, "", false, fmt.Errorf("invalid page token")

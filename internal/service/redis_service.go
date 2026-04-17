@@ -216,6 +216,9 @@ type UsageEntry struct {
 
 // GetUsageWithTTL fetches usage counts and TTLs for the given keys in a single pipeline.
 func (s *RedisService) GetUsageWithTTL(ctx context.Context, keys []string) ([]UsageEntry, error) {
+	if len(keys) == 0 {
+		return []UsageEntry{}, nil
+	}
 	pipe := s.client.Pipeline()
 	mgetCmd := pipe.MGet(ctx, keys...)
 	ttlCmds := make([]*redis.DurationCmd, len(keys))
@@ -234,7 +237,12 @@ func (s *RedisService) GetUsageWithTTL(ctx context.Context, keys []string) ([]Us
 	for i := range keys {
 		if i < len(vals) && vals[i] != nil {
 			if s, ok := vals[i].(string); ok {
-				entries[i].Count, _ = strconv.ParseInt(s, 10, 64)
+				var parseErr error
+				entries[i].Count, parseErr = strconv.ParseInt(s, 10, 64)
+				if parseErr != nil {
+					logger.L.Warn("redis: unexpected non-integer counter value",
+						zap.String("key", keys[i]), zap.String("value", s), zap.Error(parseErr))
+				}
 			}
 		}
 		entries[i].ResetIn = -1

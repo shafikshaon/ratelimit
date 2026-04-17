@@ -286,7 +286,17 @@ func (h *APIHandler) CreateOverride(c *gin.Context) {
 		return
 	}
 	// Validate tier override values: must be "", "global", or a positive integer string.
-	for field, val := range map[string]string{"t1": req.T1, "t2": req.T2, "t3": req.T3} {
+	// Use a slice (not a map) to guarantee deterministic field order in error messages.
+	for _, field := range []string{"t1", "t2", "t3"} {
+		var val string
+		switch field {
+		case "t1":
+			val = req.T1
+		case "t2":
+			val = req.T2
+		case "t3":
+			val = req.T3
+		}
 		if !isValidOverrideTier(val) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": field + " must be 'global' or a positive integer"})
 			return
