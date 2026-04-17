@@ -3,151 +3,249 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RateLimiter — API Tester</title>
+  <title>RateLimiter — Tester</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif; }
-    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    *, *::before, *::after { box-sizing: border-box; }
+    body { font-family: 'Inter', system-ui, sans-serif; background: #070b14; color: #cdd6e8; }
+    ::-webkit-scrollbar { width: 3px; height: 3px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #d6d3d1; border-radius: 9px; }
-    ::-webkit-scrollbar-thumb:hover { background: #a8a29e; }
-    /* Light scrollbar for log area */
-    #log-area::-webkit-scrollbar-thumb { background: #e7e5e4; }
-    /* Input focus */
-    .panel-input:focus { outline: none; border-color: #f59e0b; box-shadow: 0 0 0 2px #f59e0b30; }
-    /* Smooth transitions */
-    .tier-card { transition: box-shadow 0.15s ease; }
-    .log-row:nth-child(even) { background: #fafaf9; }
+    ::-webkit-scrollbar-thumb { background: #2e3a52; border-radius: 10px; }
+    ::-webkit-scrollbar-thumb:hover { background: #3d4f6e; }
+
+    .card { background: #0d1220; border: 1px solid rgba(255,255,255,.07); border-radius: 12px; }
+
+    .pill { display: inline-flex; align-items: center; font-size: 10px; font-weight: 600;
+            padding: 2px 8px; border-radius: 20px; letter-spacing: .02em; }
+    .pill-t1 { background: rgba(59,130,246,.15); color: #7cb9ff; border: 1px solid rgba(59,130,246,.2); }
+    .pill-t2 { background: rgba(139,92,246,.15); color: #c4b5fd; border: 1px solid rgba(139,92,246,.2); }
+    .pill-t3 { background: rgba(16,185,129,.15); color: #6ee7b7; border: 1px solid rgba(16,185,129,.2); }
+    .pill-email  { background: rgba(244,63,94,.1);  color: #fda4af; border: 1px solid rgba(244,63,94,.2); }
+    .pill-wallet { background: rgba(245,158,11,.1); color: #fcd34d; border: 1px solid rgba(245,158,11,.2); }
+
+    .f-input {
+      width: 100%; padding: 8px 11px; font-size: 12px; font-weight: 500;
+      background: #0a0f1e; border: 1px solid rgba(255,255,255,.08); border-radius: 7px;
+      color: #cdd6e8; transition: border-color .15s, box-shadow .15s; outline: none;
+    }
+    .f-input:focus { border-color: rgba(79,142,247,.5); box-shadow: 0 0 0 3px rgba(79,142,247,.1); }
+    .f-input::placeholder { color: #2e3a52; }
+    select.f-input { appearance: none; cursor: pointer; }
+
+    .field-label { font-size: 10px; font-weight: 600; letter-spacing: .06em;
+                   text-transform: uppercase; color: #3d4f6e; margin-bottom: 5px; }
+
+    .btn-primary {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      padding: 9px 18px; font-size: 12px; font-weight: 700;
+      background: #4f8ef7; color: #fff; border-radius: 8px; border: none; cursor: pointer;
+      transition: background .15s, box-shadow .15s; width: 100%;
+    }
+    .btn-primary:hover { background: #3d7ee8; box-shadow: 0 0 18px rgba(79,142,247,.4); }
+    .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+
+    .btn-stop {
+      display: none; align-items: center; justify-content: center; gap: 6px;
+      padding: 9px 18px; font-size: 12px; font-weight: 600; width: 100%;
+      background: transparent; color: #ef4444; border: 1px solid rgba(239,68,68,.3);
+      border-radius: 8px; cursor: pointer; transition: background .15s;
+    }
+    .btn-stop:hover { background: rgba(239,68,68,.08); }
+
+    .btn-ghost {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 7px 14px; font-size: 12px; font-weight: 500;
+      background: transparent; color: #7a8fa8; border: 1px solid rgba(255,255,255,.08);
+      border-radius: 8px; cursor: pointer; transition: background .15s, color .15s;
+    }
+    .btn-ghost:hover { background: rgba(255,255,255,.05); color: #cdd6e8; }
+
+    .tier-card-t1 { border-top: 2px solid #3b82f6; }
+    .tier-card-t2 { border-top: 2px solid #8b5cf6; }
+    .tier-card-t3 { border-top: 2px solid #10b981; }
+
+    .usage-bar-wrap { background: rgba(255,255,255,.05); border-radius: 99px; height: 4px; overflow: hidden; }
+    .usage-bar { height: 100%; border-radius: 99px; transition: width .5s cubic-bezier(.4,0,.2,1); background: #2e3a52; }
+    .usage-bar.low  { background: linear-gradient(90deg, #10b981, #34d399); }
+    .usage-bar.mid  { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+    .usage-bar.high { background: linear-gradient(90deg, #ef4444, #f87171); }
+
+    /* status badges on tier cards */
+    .status-ready   { background:rgba(255,255,255,.05); color:#4f617d; }
+    .status-pass    { background:rgba(16,185,129,.12);  color:#6ee7b7; }
+    .status-limit   { background:rgba(239,68,68,.12);   color:#f87171; }
+    .status-near    { background:rgba(245,158,11,.12);  color:#fbbf24; }
+    .status-noscope { background:rgba(255,255,255,.04); color:#2e3a52; }
+
+    /* log rows */
+    .log-row { border-bottom: 1px solid rgba(255,255,255,.04); transition: background .1s; }
+    .log-row:hover { background: rgba(255,255,255,.025); }
+    .log-allowed  { color: #6ee7b7; }
+    .log-blocked  { color: #f87171; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+
+    /* separator */
+    .sep { height: 1px; background: rgba(255,255,255,.05); margin: 4px 0; }
+
+    /* scope warning */
+    #scope-warning {
+      background: rgba(245,158,11,.08); border: 1px solid rgba(245,158,11,.2);
+      border-radius: 8px; padding: 10px 12px;
+    }
+
+    /* running pulse on header dot */
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+    .pulse { animation: pulse 1.2s ease-in-out infinite; }
   </style>
 </head>
 
-<body class="bg-stone-100 text-stone-900 antialiased h-screen overflow-hidden">
+<body class="h-screen overflow-hidden antialiased">
 
 <div class="h-screen flex flex-col">
 
-  <!-- ── SPLIT HEADER ── -->
-  <header class="flex flex-shrink-0 h-12 border-b border-stone-200">
-
-    <!-- Left: brand strip (matches sidebar width) -->
-    <div class="w-72 flex-shrink-0 bg-white flex items-center gap-2.5 px-4 border-r border-stone-200">
-      <div class="w-6 h-6 rounded-md bg-amber-500 flex items-center justify-center text-white font-bold text-[10px] flex-shrink-0">RL</div>
-      <span class="font-bold text-sm text-stone-900 tracking-tight">RateLimiter</span>
-      <span class="text-stone-400 text-xs ml-1">/ Tester</span>
+  <!-- ── HEADER ── -->
+  <header style="background:#0a0f1e; border-bottom:1px solid rgba(255,255,255,.07); height:52px;"
+          class="flex flex-shrink-0 items-center px-4 gap-4">
+    <div class="flex items-center gap-3">
+      <div style="background:linear-gradient(135deg,#4f8ef7,#8b5cf6); border-radius:9px; width:30px; height:30px;"
+           class="flex items-center justify-center flex-shrink-0">
+        <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        </svg>
+      </div>
+      <div>
+        <div style="font-size:14px;font-weight:700;color:#fff;letter-spacing:-.01em;line-height:1.2;">RateLimiter</div>
+        <div style="font-size:10px;color:#4f617d;line-height:1;">Tester</div>
+      </div>
     </div>
 
-    <!-- Right: light strip -->
-    <div class="flex-1 bg-white flex items-center px-5 gap-3">
-      <div class="flex-1 min-w-0">
-        <span class="font-semibold text-sm text-stone-800">API Tester</span>
-        <span class="hidden sm:inline text-stone-400 text-xs ml-2">Simulate requests &middot; Live tier enforcement</span>
+    <div style="width:1px; height:24px; background:rgba(255,255,255,.07);"></div>
+
+    <div class="flex-1 min-w-0">
+      <div id="run-status-label" style="font-size:11px;color:#4f617d;">
+        Simulate requests · Live tier enforcement · Real Redis increments
       </div>
-      <div class="flex items-center gap-2">
-        <a href="index.html" target="_blank"
-          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-stone-600 border border-stone-200 hover:border-stone-300 hover:bg-stone-50 rounded-md transition-colors">
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15,3 21,3 21,9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-          Config
-        </a>
-        <button id="clear-usage-btn"
-          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 border border-red-200 hover:bg-red-50 rounded-md transition-colors">
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
-          Clear usage
-        </button>
-      </div>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <a href="index.html" target="_blank" class="btn-ghost">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
+        </svg>
+        Config
+      </a>
+      <button id="clear-usage-btn" class="btn-ghost" style="color:#f87171; border-color:rgba(239,68,68,.2);">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>
+        </svg>
+        Refresh
+      </button>
     </div>
   </header>
 
   <!-- ── BODY ── -->
-  <div class="flex flex-1 overflow-hidden min-h-0 bg-stone-100 p-3 gap-3">
+  <div class="flex flex-1 overflow-hidden min-h-0 p-3 gap-3" style="background:#070b14;">
 
     <!-- ── LEFT PANEL ── -->
-    <aside class="w-72 flex-shrink-0 bg-white border border-stone-200 rounded-xl shadow-sm flex flex-col overflow-y-auto">
+    <aside class="card flex-shrink-0 flex flex-col overflow-y-auto" style="width:272px;">
 
-      <div class="p-4 flex flex-col gap-4">
+      <div style="padding:16px; display:flex; flex-direction:column; gap:14px;">
 
         <!-- API selector -->
-        <div class="space-y-1.5">
-          <label class="text-[9px] font-bold uppercase tracking-widest text-stone-400">API Endpoint</label>
-          <div class="relative">
-            <select id="api-select"
-              class="panel-input w-full px-3 py-2 text-xs font-semibold border border-stone-200 rounded-md bg-stone-50 text-stone-700 appearance-none pr-8">
-            </select>
-            <svg class="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-stone-400 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6,9 12,15 18,9"/></svg>
+        <div>
+          <div class="field-label">API Endpoint</div>
+          <div style="position:relative;">
+            <select id="api-select" class="f-input" style="padding-right:30px;"></select>
+            <svg style="position:absolute;right:10px;top:50%;transform:translateY(-50%);width:12px;height:12px;color:#3d4f6e;pointer-events:none;"
+                 fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6,9 12,15 18,9"/></svg>
           </div>
         </div>
 
-        <!-- Email input (T1) -->
-        <div class="space-y-1.5">
-          <label class="text-[9px] font-bold uppercase tracking-widest text-stone-400">
-            Email
-            <span class="ml-1 text-[9px] font-semibold px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 normal-case tracking-normal border border-blue-100">T1 scope</span>
-          </label>
-          <input id="tester-email" type="email" placeholder="user@example.com"
-            class="panel-input w-full px-3 py-2 text-xs border border-stone-200 rounded-md bg-stone-50 text-stone-700 placeholder-stone-400" />
-          <p class="text-[10px] text-stone-400">Rate-limit key for Tier 1</p>
+        <!-- Email (T1) -->
+        <div>
+          <div class="field-label" style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">
+            Email <span class="pill pill-t1">T1 scope</span>
+          </div>
+          <div style="position:relative;">
+            <svg style="position:absolute;left:10px;top:50%;transform:translateY(-50%);width:12px;height:12px;color:#3d4f6e;pointer-events:none;"
+                 fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+            </svg>
+            <input id="tester-email" type="email" placeholder="user@example.com"
+              class="f-input" style="padding-left:30px;" />
+          </div>
         </div>
 
-        <!-- Wallet input (T2/T3) -->
-        <div class="space-y-1.5">
-          <label class="text-[9px] font-bold uppercase tracking-widest text-stone-400">
-            Wallet
-            <span class="ml-1 text-[9px] font-semibold px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 normal-case tracking-normal border border-amber-100">T2 &amp; T3 scope</span>
-          </label>
-          <input id="tester-wallet" type="text" placeholder="01700000099"
-            class="panel-input w-full px-3 py-2 text-xs border border-stone-200 rounded-md bg-stone-50 text-stone-700 placeholder-stone-400 font-mono" />
-          <p class="text-[10px] text-stone-400">Rate-limit key for Tier 2 &amp; 3</p>
+        <!-- Wallet (T2/T3) -->
+        <div>
+          <div class="field-label" style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">
+            Wallet <span class="pill pill-wallet">T2 &amp; T3</span>
+          </div>
+          <div style="position:relative;">
+            <svg style="position:absolute;left:10px;top:50%;transform:translateY(-50%);width:12px;height:12px;color:#3d4f6e;pointer-events:none;"
+                 fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <rect x="2" y="5" width="20" height="14" rx="2"/>
+            </svg>
+            <input id="tester-wallet" type="text" placeholder="01700000099"
+              class="f-input mono" style="padding-left:30px;" />
+          </div>
         </div>
 
         <!-- Scope warning -->
-        <div id="scope-warning" class="hidden bg-amber-50 border border-amber-200 rounded-md px-3 py-2 space-y-0.5">
-          <p class="text-[11px] font-semibold text-amber-700">Scope required</p>
-          <p class="text-[10px] text-amber-600" id="scope-warning-msg">Enter email and/or wallet to track usage per identity.</p>
+        <div id="scope-warning" class="hidden">
+          <p style="font-size:11px;font-weight:600;color:#fbbf24;margin-bottom:3px;">Scope required</p>
+          <p id="scope-warning-msg" style="font-size:10px;color:#f59e0b;opacity:.8;">Enter email and/or wallet to track usage per identity.</p>
         </div>
 
-        <!-- Requests / Delay row -->
-        <div class="grid grid-cols-2 gap-3">
-          <div class="space-y-1.5">
-            <label class="text-[9px] font-bold uppercase tracking-widest text-stone-400">Requests</label>
-            <input id="req-count" type="number" min="1" max="500" value="10"
-              class="panel-input w-full px-2.5 py-2 text-xs font-semibold border border-stone-200 rounded-md bg-stone-50 text-stone-700" />
+        <!-- Count / Delay -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div>
+            <div class="field-label">Requests</div>
+            <input id="req-count" type="number" min="1" max="500" value="10" class="f-input" style="font-weight:600;" />
           </div>
-          <div class="space-y-1.5">
-            <label class="text-[9px] font-bold uppercase tracking-widest text-stone-400">Delay (ms)</label>
-            <input id="req-delay" type="number" min="0" max="5000" value="200"
-              class="panel-input w-full px-2.5 py-2 text-xs font-semibold border border-stone-200 rounded-md bg-stone-50 text-stone-700" />
+          <div>
+            <div class="field-label">Delay (ms)</div>
+            <input id="req-delay" type="number" min="0" max="5000" value="200" class="f-input" style="font-weight:600;" />
           </div>
         </div>
 
-        <!-- Run / Stop buttons -->
-        <div class="flex flex-col gap-2">
-          <button id="run-btn"
-            class="w-full inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold text-white bg-amber-500 hover:bg-amber-600 rounded-md transition-colors">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>
+        <!-- Run / Stop -->
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <button id="run-btn" class="btn-primary">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+              <polygon points="5,3 19,12 5,21"/>
+            </svg>
             Run Test
           </button>
-          <button id="stop-btn"
-            class="hidden w-full inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-semibold text-stone-600 border border-stone-200 hover:bg-stone-50 rounded-md transition-colors">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+          <button id="stop-btn" class="btn-stop">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+              <rect x="6" y="6" width="12" height="12" rx="1"/>
+            </svg>
             Stop
           </button>
         </div>
 
-        <!-- Divider -->
-        <div class="border-t border-stone-100"></div>
+        <div class="sep"></div>
 
         <!-- Config summary -->
-        <div class="space-y-2">
-          <p class="text-[9px] font-bold uppercase tracking-widest text-stone-400">Config Summary</p>
-          <div id="config-summary" class="space-y-1.5 text-[10px] text-stone-500">
-            <p class="text-stone-400 italic">No API selected</p>
+        <div>
+          <div class="field-label" style="margin-bottom:8px;">Config Summary</div>
+          <div id="config-summary" style="font-size:11px;color:#4f617d;font-style:italic;">
+            No API selected
           </div>
         </div>
 
       </div>
 
-      <!-- Spacer + status footer -->
-      <div class="mt-auto px-4 py-3 border-t border-stone-100">
-        <p id="tester-status" class="text-[10px] text-stone-400"></p>
+      <!-- Footer status -->
+      <div style="margin-top:auto;padding:10px 16px;border-top:1px solid rgba(255,255,255,.05);">
+        <p id="tester-status" style="font-size:10px;color:#3d4f6e;"></p>
       </div>
 
     </aside>
@@ -155,29 +253,38 @@
     <!-- ── RIGHT AREA ── -->
     <div class="flex-1 flex flex-col gap-3 overflow-hidden min-w-0">
 
-      <!-- Tier status cards row -->
-      <div id="tier-status-row" class="grid grid-cols-3 gap-3 flex-shrink-0">
+      <!-- Tier status cards -->
+      <div id="tier-status-row" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;flex-shrink:0;">
         <!-- populated by JS -->
       </div>
 
       <!-- Request log -->
-      <div class="flex-1 bg-white border border-stone-200 rounded-xl overflow-hidden flex flex-col min-h-0">
-        <!-- Log header -->
-        <div class="px-4 py-2.5 border-b border-stone-100 flex items-center gap-2 flex-shrink-0">
-          <span class="text-xs font-bold text-stone-700">Request Log</span>
-          <span id="req-badge" class="text-[10px] font-semibold px-2 py-0.5 rounded bg-stone-100 text-stone-500">0 requests</span>
-          <div class="flex-1"></div>
-          <button id="clear-log-btn"
-            class="text-[11px] text-stone-400 hover:text-stone-600 px-2 py-1 rounded-md hover:bg-stone-50 transition-colors">
-            Clear
+      <div class="card flex flex-col flex-1 overflow-hidden min-h-0">
+        <div style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,.05);
+                    display:flex;align-items:center;gap:8px;flex-shrink:0;">
+          <svg style="width:13px;height:13px;color:#4f617d;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+          </svg>
+          <span style="font-size:13px;font-weight:600;color:#cdd6e8;">Request Log</span>
+          <span id="req-badge" style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;
+                background:rgba(255,255,255,.05);color:#4f617d;border:1px solid rgba(255,255,255,.06);">
+            0 requests
+          </span>
+          <div style="flex:1;"></div>
+          <button id="clear-log-btn" class="btn-ghost" style="padding:5px 10px;font-size:11px;">
+            Clear log
           </button>
         </div>
-        <!-- Log entries -->
+
         <div id="log-area" class="flex-1 overflow-y-auto">
-          <div id="log-empty" class="flex flex-col items-center justify-center h-full py-16 text-center">
-            <svg class="w-7 h-7 text-stone-200 mb-3" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
-            <p class="text-sm font-semibold text-stone-300">No requests yet</p>
-            <p class="text-xs text-stone-300 mt-1">Configure and run a test</p>
+          <div id="log-empty" style="display:flex;flex-direction:column;align-items:center;
+                justify-content:center;height:100%;padding:48px 0;text-align:center;">
+            <svg style="width:32px;height:32px;color:#1e2a40;margin-bottom:12px;" fill="none"
+                 stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+              <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+            </svg>
+            <p style="font-size:14px;font-weight:600;color:#263047;">No requests yet</p>
+            <p style="font-size:11px;color:#1e2a40;margin-top:4px;">Configure identifiers and run a test above</p>
           </div>
           <div id="log-entries"></div>
         </div>
@@ -185,43 +292,26 @@
 
     </div>
   </div>
-
-</div><!-- /page wrapper -->
+</div>
 
 
 <script>
-// ═══════════════════════════════════════════════
-//  CONSTANTS
-// ═══════════════════════════════════════════════
 const API_BASE = '/api/v1';
 
 function formatResetIn(resetIn) {
   if (!resetIn || resetIn < 0) return null;
-  const h = Math.floor(resetIn / 3600);
-  const m = Math.floor((resetIn % 3600) / 60);
-  const s = resetIn % 60;
+  const h = Math.floor(resetIn / 3600), m = Math.floor((resetIn % 3600) / 60), s = resetIn % 60;
   if (h > 0) return `resets in ${h}h ${m}m`;
   if (m > 0) return `resets in ${m}m ${s}s`;
   return `resets in ${s}s`;
 }
 
-// ═══════════════════════════════════════════════
-//  STATE
-// ═══════════════════════════════════════════════
-let apiGroups    = [];   // [{name, count, apis:[{id,name,group}]}]
-let tierCache    = {};   // { apiName: [Tier,...] }
-let resolvedCache = {};  // { "apiName|wallet": ResolvedConfig }
-let reqCount = 0;
-let running  = false;
-let stopFlag = false;
-let runTimer = null;
+let apiGroups = [], tierCache = {}, resolvedCache = {};
+let reqCount = 0, running = false, stopFlag = false, runTimer = null;
 
-// ═══════════════════════════════════════════════
-//  API CALLS
-// ═══════════════════════════════════════════════
 async function fetchAPIList() {
   const res = await fetch(`${API_BASE}/apis`);
-  if (!res.ok) throw new Error('Failed to load API list');
+  if (!res.ok) throw new Error('Failed');
   const json = await res.json();
   apiGroups = json.data || [];
 }
@@ -229,83 +319,55 @@ async function fetchAPIList() {
 async function fetchTierConfig(apiName) {
   if (tierCache[apiName]) return tierCache[apiName];
   const res = await fetch(`${API_BASE}/apis/${encodeURIComponent(apiName)}`);
-  if (!res.ok) throw new Error('Failed to load API config');
+  if (!res.ok) throw new Error('Failed');
   const json = await res.json();
   tierCache[apiName] = json.data.tiers || [];
   return tierCache[apiName];
 }
 
-// Single Redis MGET: returns ResolvedConfig with effective_max per tier
-async function fetchWalletConfig(apiName, wallet) {
-  const cacheKey = `${apiName}|${wallet}`;
-  if (resolvedCache[cacheKey]) return resolvedCache[cacheKey];
-  const res = await fetch(`${API_BASE}/apis/${encodeURIComponent(apiName)}/config/${encodeURIComponent(wallet)}`);
-  if (!res.ok) throw new Error('Failed to fetch wallet config');
-  const data = await res.json();
-  resolvedCache[cacheKey] = data;
-  return data;
-}
-
-function invalidateWalletConfig(apiName, wallet) {
-  delete resolvedCache[`${apiName}|${wallet}`];
-}
-
-// ═══════════════════════════════════════════════
-//  POPULATE API SELECT
-// ═══════════════════════════════════════════════
 function populateApiSelect() {
   const $sel = $('#api-select').empty();
-  if (!apiGroups.length) {
-    $sel.append('<option value="">No APIs available</option>');
-    return;
-  }
-  apiGroups.forEach(group => {
-    const $og = $('<optgroup>').attr('label', group.name);
-    group.apis.forEach(api => $og.append($('<option>').val(api.name).text(api.name)));
+  if (!apiGroups.length) { $sel.append('<option value="">No APIs</option>'); return; }
+  apiGroups.forEach(g => {
+    const $og = $('<optgroup>').attr('label', g.name);
+    g.apis.forEach(a => $og.append($('<option>').val(a.name).text(a.name)));
     $sel.append($og);
   });
 }
 
-// ═══════════════════════════════════════════════
-//  CONFIG SUMMARY PANEL
-// ═══════════════════════════════════════════════
 async function updateConfigSummary() {
   const apiName = $('#api-select').val();
   const $sum = $('#config-summary').empty();
-  if (!apiName) {
-    $sum.append('<p class="text-stone-600 italic">No API selected</p>');
-    return;
-  }
-  $sum.append('<p class="text-stone-600 italic text-[10px]">Loading…</p>');
+  if (!apiName) { $sum.text('No API selected'); return; }
+  $sum.text('Loading…');
   let tiers;
   try { tiers = await fetchTierConfig(apiName); }
-  catch(e) { $sum.html('<p class="text-stone-300 italic">Failed to load</p>'); return; }
-
+  catch { $sum.text('Failed to load'); return; }
   $sum.empty();
-  const TIER_COLORS = ['text-blue-600', 'text-amber-600', 'text-emerald-600'];
+  const COLORS = ['#7cb9ff','#c4b5fd','#6ee7b7'];
   tiers.forEach((t, i) => {
-    const win = t.unit === 'daily'
-      ? `${t.max_requests} / day`
-      : `${t.max_requests} / ${t.window} ${t.unit}`;
-    $sum.append(`<div class="flex items-start gap-1.5">
-      <span class="font-semibold ${TIER_COLORS[i]} flex-shrink-0">T${t.tier}</span>
-      <span>${t.scope} · ${win}</span>
+    const win = t.unit === 'daily' ? `${t.max_requests} / day` : `${t.max_requests} / ${t.window} ${t.unit}`;
+    $sum.append(`<div style="display:flex;align-items:baseline;gap:6px;padding:3px 0;">
+      <span style="color:${COLORS[i]};font-weight:600;">T${t.tier}</span>
+      <span style="color:#4f617d;">${t.scope} · ${win}</span>
     </div>`);
   });
 }
 
-// ═══════════════════════════════════════════════
-//  TIER STATUS CARDS
-// ═══════════════════════════════════════════════
+// ── TIER STATUS CARDS ──
+const TOPS = ['tier-card-t1','tier-card-t2','tier-card-t3'];
+const PILL_CLS = ['pill-t1','pill-t2','pill-t3'];
+const SCOPE_PILL = s => s === 'email' ? 'pill-email' : 'pill-wallet';
+
 function renderPlaceholderCards() {
   const $row = $('#tier-status-row').empty();
   for (let i = 0; i < 3; i++) {
     $row.append(`
-      <div class="bg-white rounded-xl border border-stone-200 p-3 flex flex-col gap-2">
-        <div class="flex items-center gap-2">
-          <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-stone-100 text-stone-400">Tier ${i+1}</span>
+      <div class="card ${TOPS[i]}" style="padding:14px;display:flex;flex-direction:column;gap:10px;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span class="pill ${PILL_CLS[i]}">Tier ${i+1}</span>
         </div>
-        <p class="text-xs text-stone-300 italic">No API selected</p>
+        <p style="font-size:11px;color:#1e2a40;font-style:italic;">No API selected</p>
       </div>`);
   }
 }
@@ -313,148 +375,152 @@ function renderPlaceholderCards() {
 async function buildTierStatusCards(apiName) {
   const $row = $('#tier-status-row').empty();
   if (!apiName) { renderPlaceholderCards(); return; }
-
   let tiers;
   try { tiers = await fetchTierConfig(apiName); }
-  catch(e) { renderPlaceholderCards(); return; }
-
-  const TIER_BADGE  = ['bg-blue-100 text-blue-800', 'bg-amber-100 text-amber-800', 'bg-emerald-100 text-emerald-800'];
-  const SCOPE_BADGE = { email: 'bg-pink-100 text-pink-700', wallet: 'bg-amber-100 text-amber-700' };
+  catch { renderPlaceholderCards(); return; }
 
   tiers.forEach((t, i) => {
     $row.append($(`
-      <div class="tier-card bg-white rounded-xl border border-stone-200 p-3 flex flex-col gap-2" id="tier-card-${i}">
-        <!-- Tier header row -->
-        <div class="flex items-center gap-1.5 flex-wrap">
-          <span class="text-[10px] font-bold px-2 py-0.5 rounded ${TIER_BADGE[i]}">Tier ${t.tier}</span>
-          <span class="text-[10px] font-semibold px-2 py-0.5 rounded ${SCOPE_BADGE[t.scope] || 'bg-stone-100 text-stone-600'}">${t.scope}</span>
+      <div class="card ${TOPS[i]||''}" id="tier-card-${i}"
+           style="padding:14px;display:flex;flex-direction:column;gap:9px;">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <span class="pill ${PILL_CLS[i]||'pill-t1'}">Tier ${t.tier}</span>
+          <span class="pill ${SCOPE_PILL(t.scope)}">${t.scope}</span>
+          <span id="tc-status-${i}" style="margin-left:auto;font-size:10px;font-weight:700;
+            padding:2px 8px;border-radius:20px;" class="status-ready">READY</span>
         </div>
-        <!-- Scope identity -->
-        <div class="flex items-center gap-1.5 min-w-0">
-          <svg class="w-3 h-3 text-stone-300 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
-          <span class="text-[10px] text-stone-400 truncate font-mono" id="tc-scope-${i}">—</span>
+        <div style="display:flex;align-items:center;gap:6px;min-width:0;">
+          <svg style="width:11px;height:11px;color:#2e3a52;flex-shrink:0;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+          </svg>
+          <span id="tc-scope-${i}" class="mono"
+            style="font-size:10px;color:#3d4f6e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">—</span>
         </div>
-        <!-- Redis key -->
-        <div class="font-mono text-[9px] text-stone-400 bg-stone-50 border border-stone-100 rounded px-2 py-1 truncate">${t.redis_key}</div>
-        <!-- Usage bar -->
+        <div class="mono" style="font-size:9.5px;color:#1e2a40;background:rgba(255,255,255,.02);
+             border:1px solid rgba(255,255,255,.04);border-radius:5px;padding:4px 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+          ${t.redis_key}
+        </div>
         <div>
-          <div class="w-full bg-stone-100 rounded-full h-1 mb-1">
-            <div class="h-1 rounded-full transition-all duration-500 bg-stone-200" id="tc-bar-${i}" style="width:0%"></div>
+          <div class="usage-bar-wrap" style="margin-bottom:4px;">
+            <div id="tc-bar-${i}" class="usage-bar" style="width:0%;"></div>
           </div>
-          <p class="text-[10px] text-stone-400" id="tc-txt-${i}">—</p>
+          <p id="tc-txt-${i}" style="font-size:10px;color:#3d4f6e;">—</p>
         </div>
-        <!-- Footer row -->
-        <div class="flex items-center justify-between gap-2 pt-0.5 border-t border-stone-100">
-          <p class="text-[9px] text-stone-400 truncate" id="tc-win-${i}">${t.unit === 'daily' ? `daily (resets ${String(t.reset_hour??0).padStart(2,'0')}:00 BDT)` : `${t.window} ${t.unit}`}</p>
-          <span class="text-[9px] font-bold px-2 py-0.5 rounded flex-shrink-0 bg-stone-100 text-stone-400" id="tc-status-${i}">READY</span>
+        <div style="display:flex;align-items:center;justify-content:space-between;
+                    padding-top:4px;border-top:1px solid rgba(255,255,255,.04);">
+          <span id="tc-win-${i}" style="font-size:9px;color:#2e3a52;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+            ${t.unit === 'daily' ? `daily · resets ${String(t.reset_hour??0).padStart(2,'0')}:00 BDT` : `${t.window} ${t.unit}`}
+          </span>
         </div>
       </div>`));
   });
 }
 
-// Updates usage bars on existing cards — reads real counters from Redis via backend.
 async function updateTierCards(apiName) {
   if (!apiName) return;
-  const email  = $('#tester-email').val().trim();
-  const wallet = $('#tester-wallet').val().trim();
-
+  const email = $('#tester-email').val().trim(), wallet = $('#tester-wallet').val().trim();
   let tiers;
-  try { tiers = await fetchTierConfig(apiName); } catch(e) { return; }
+  try { tiers = await fetchTierConfig(apiName); } catch { return; }
 
   if (!email && !wallet) {
-    tiers.forEach((tier, i) => {
-      const scopeLabel = i === 0 ? 'email' : 'wallet';
-      $(`#tc-scope-${i}`).text(`No ${scopeLabel} — not tracked`).addClass('italic text-stone-300').removeClass('text-stone-400 text-stone-500');
-      $(`#tc-bar-${i}`).css('width','0%').removeClass('bg-emerald-400 bg-amber-400 bg-red-400').addClass('bg-stone-200');
+    tiers.forEach((_, i) => {
+      $(`#tc-scope-${i}`).text(`No scope — not tracked`).css('color','#1e2a40');
+      $(`#tc-bar-${i}`).css('width','0%').attr('class','usage-bar');
       $(`#tc-txt-${i}`).text('—');
-      $(`#tc-status-${i}`).text('NO SCOPE').removeClass('bg-emerald-50 text-emerald-700 bg-amber-50 text-amber-600 bg-red-50 text-red-600').addClass('bg-stone-100 text-stone-400');
+      $(`#tc-status-${i}`).text('NO SCOPE').attr('class','status-noscope')
+        .css({ fontSize:'10px', fontWeight:'700', padding:'2px 8px', borderRadius:'20px' });
     });
     return;
   }
 
   try {
     const params = new URLSearchParams();
-    if (email)  params.set('email',  email);
+    if (email) params.set('email', email);
     if (wallet) params.set('wallet', wallet);
     const resp = await fetch(`${API_BASE}/apis/${encodeURIComponent(apiName)}/usage?${params}`);
     if (!resp.ok) return;
     const { data } = await resp.json();
-
     data.forEach((u, i) => {
-      $(`#tc-scope-${i}`).text(u.scope_id || '—').removeClass('italic text-stone-300').addClass('text-stone-500');
+      $(`#tc-scope-${i}`).text(u.scope_id || '—').css('color', u.scope_id ? '#7a8fa8' : '#2e3a52');
       const pct = u.limit > 0 ? Math.min(100, Math.round(u.used / u.limit * 100)) : 0;
-      const barColor = pct >= 100 ? 'bg-red-400' : pct >= 75 ? 'bg-amber-400' : 'bg-emerald-400';
-      $(`#tc-bar-${i}`).css('width', `${pct}%`).removeClass('bg-stone-200 bg-emerald-400 bg-amber-400 bg-red-400').addClass(barColor);
-      $(`#tc-txt-${i}`).text(`${u.used} / ${u.limit} requests · ${pct}% used`);
+      const cls = pct >= 100 ? 'high' : pct >= 75 ? 'mid' : 'low';
+      $(`#tc-bar-${i}`).css('width', `${pct}%`).attr('class', `usage-bar ${cls}`);
+      $(`#tc-txt-${i}`).html(
+        `<span style="color:#cdd6e8;font-weight:600;">${u.used}</span>` +
+        `<span style="color:#4f617d;"> / ${u.limit} · ${pct}%</span>`
+      );
       $(`#tc-win-${i}`).text(formatResetIn(u.reset_in) || u.window);
 
-      let statusText = 'PASS', statusCls = 'bg-emerald-50 text-emerald-700';
-      if (pct >= 100)      { statusText = 'AT LIMIT';   statusCls = 'bg-red-50 text-red-600'; }
-      else if (pct >= 75)  { statusText = 'NEAR LIMIT'; statusCls = 'bg-amber-50 text-amber-600'; }
-      $(`#tc-status-${i}`).text(statusText)
-        .removeClass('bg-stone-100 text-stone-400 bg-emerald-50 text-emerald-700 bg-amber-50 text-amber-600 bg-red-50 text-red-600')
-        .addClass(statusCls);
+      let txt = 'PASS', sc = 'status-pass';
+      if (pct >= 100)     { txt = 'AT LIMIT';   sc = 'status-limit'; }
+      else if (pct >= 75) { txt = 'NEAR LIMIT'; sc = 'status-near'; }
+      $(`#tc-status-${i}`).text(txt).attr('class', sc)
+        .css({ fontSize:'10px', fontWeight:'700', padding:'2px 8px', borderRadius:'20px' });
     });
-  } catch(e) { /* best-effort */ }
+  } catch {}
 }
 
-// ═══════════════════════════════════════════════
-//  FIRE REQUEST  (calls backend — real Redis increment)
-// ═══════════════════════════════════════════════
+// ── FIRE REQUEST ──
 async function fireRequest(apiName, email, wallet) {
   try {
     const resp = await fetch(`${API_BASE}/apis/${encodeURIComponent(apiName)}/check`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, wallet })
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ email, wallet }),
     });
     const data = await resp.json();
     return { allowed: data.allowed ?? false, tierResults: data.tier_results ?? [] };
-  } catch(e) {
+  } catch {
     return { allowed: false, tierResults: [] };
   }
 }
 
-// ═══════════════════════════════════════════════
-//  LOG ENTRY
-// ═══════════════════════════════════════════════
+// ── LOG ENTRY ──
 function prependLogEntry(n, apiName, email, wallet, result) {
   $('#log-empty').hide();
-
   const now = new Date();
-  const ts  = now.toTimeString().slice(0,8) + '.' + String(now.getMilliseconds()).padStart(3,'0');
-  const overall    = result.allowed ? 'ALLOWED' : 'RATE LIMITED';
-  const overallCls = result.allowed ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600';
+  const ts = now.toTimeString().slice(0,8) + '.' + String(now.getMilliseconds()).padStart(3,'0');
+  const allowed = result.allowed;
+  const overallColor = allowed ? '#6ee7b7' : '#f87171';
+  const overallBg    = allowed ? 'rgba(16,185,129,.1)' : 'rgba(239,68,68,.1)';
+  const overallBdr   = allowed ? 'rgba(16,185,129,.2)' : 'rgba(239,68,68,.2)';
 
-  const STATUS_TEXT = { pass: 'PASS', blocked: 'BLOCKED', throttled: 'THROTTLED', skipped: 'SKIP' };
-  const STATUS_CLS  = { pass: 'text-emerald-600', blocked: 'text-red-500 font-semibold', throttled: 'text-amber-600 font-semibold', skipped: 'text-stone-400' };
-
+  const STATUS_COLOR = { pass:'#6ee7b7', blocked:'#f87171', throttled:'#fbbf24', skipped:'#2e3a52' };
+  const STATUS_WT    = { pass:'400', blocked:'700', throttled:'600', skipped:'400' };
   const tiers = tierCache[apiName] || [];
+
   const tierLines = result.tierResults.map(r => {
     if (r.status === 'skipped') {
-      return `<div>T${r.tier} ${r.scope} → <span class="${STATUS_CLS.skipped}">SKIP</span></div>`;
+      return `<span style="color:#2e3a52;">T${r.tier} ${r.scope} → SKIP</span>`;
     }
     const t = tiers[r.tier - 1];
-    const winStr = t ? (t.unit === 'daily' ? 'today' : `in ${t.window}${({seconds:'s',minutes:'m',hours:'h'}[t.unit]||'')}`) : '';
-    const scopeDisplay = r.scopeId ? `<span class="${r.scope === 'email' ? 'text-blue-500' : 'text-amber-600'}">${r.scopeId}</span> · ` : '';
-    return `<div>T${r.tier} ${r.scope} → ${scopeDisplay}<span class="${STATUS_CLS[r.status]||''}">${STATUS_TEXT[r.status]||r.status}</span> (${r.used}/${r.limit} ${winStr})</div>`;
-  }).join('');
+    const winStr = t ? (t.unit === 'daily' ? 'today' : `/${t.window}${({seconds:'s',minutes:'m',hours:'h'}[t.unit]||'')}`) : '';
+    const scopeColor = r.scope === 'email' ? '#7cb9ff' : '#fcd34d';
+    const scopeStr = r.scopeId ? `<span style="color:${scopeColor};">${r.scopeId}</span> ` : '';
+    return `<span style="color:#4f617d;">T${r.tier} </span>${scopeStr}→ <span style="color:${STATUS_COLOR[r.status]||'#cdd6e8'};font-weight:${STATUS_WT[r.status]||'400'};">${r.status.toUpperCase()}</span> <span style="color:#3d4f6e;">(${r.used}/${r.limit}${winStr})</span>`;
+  }).join('<span style="color:#1e2a40;"> · </span>');
 
   $('#log-entries').prepend($(`
-    <div class="log-row border-b border-stone-100 py-2 px-4 font-mono text-xs hover:bg-stone-50/80 transition-colors">
-      <div class="flex items-center justify-between mb-1">
-        <span class="text-stone-400"><span class="text-stone-500">${ts}</span> <span class="text-stone-600 font-semibold">#${n}</span> <span class="text-stone-500">${apiName}</span> · <span class="text-blue-500">${email || '—'}</span> · <span class="text-amber-600 font-mono">${wallet || '—'}</span></span>
-        <span class="px-2 py-0.5 rounded text-[10px] font-bold ${overallCls} flex-shrink-0 ml-3">${overall}</span>
+    <div class="log-row mono" style="padding:8px 16px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+        <span style="font-size:10px;">
+          <span style="color:#3d4f6e;">${ts}</span>
+          <span style="color:#7a8fa8;font-weight:600;margin:0 6px;">#${n}</span>
+          <span style="color:#4f617d;">${apiName}</span>
+          ${email ? `<span style="color:#3d4f6e;"> · </span><span style="color:#7cb9ff;">${email}</span>` : ''}
+          ${wallet ? `<span style="color:#3d4f6e;"> · </span><span style="color:#fcd34d;">${wallet}</span>` : ''}
+        </span>
+        <span style="font-size:10px;font-weight:700;padding:2px 9px;border-radius:20px;flex-shrink:0;margin-left:10px;
+          color:${overallColor};background:${overallBg};border:1px solid ${overallBdr};">
+          ${allowed ? 'ALLOWED' : 'RATE LIMITED'}
+        </span>
       </div>
-      <div class="text-stone-400 text-[10px] space-y-0.5 pl-1">${tierLines}</div>
+      <div style="font-size:10px;color:#3d4f6e;">${tierLines}</div>
     </div>`));
 
   $('#req-badge').text(`${n} request${n !== 1 ? 's' : ''}`);
 }
 
-// ═══════════════════════════════════════════════
-//  RUN TEST  (async step loop)
-// ═══════════════════════════════════════════════
+// ── RUN TEST ──
 async function runTest() {
   const apiName = $('#api-select').val();
   const email   = $('#tester-email').val().trim();
@@ -463,71 +529,48 @@ async function runTest() {
   const delay   = Math.max(0, Math.min(5000, parseInt($('#req-delay').val()) || 200));
 
   if (!apiName) return;
-
-  const missing = [];
-  if (!email)  missing.push('email (T1)');
-  if (!wallet) missing.push('wallet (T2 & T3)');
-  if (missing.length) {
-    $('#scope-warning-msg').text(`${missing.join(' and ')} required to track usage.`);
+  if (!email && !wallet) {
+    $('#scope-warning-msg').text('Enter email and/or wallet to track usage.');
     $('#scope-warning').removeClass('hidden');
-    if (!email)  $('#tester-email').addClass('border-amber-400 ring-1 ring-amber-300');
-    if (!wallet) $('#tester-wallet').addClass('border-amber-400 ring-1 ring-amber-300');
+    if (!email)  $('#tester-email').css({'border-color':'rgba(245,158,11,.5)','box-shadow':'0 0 0 3px rgba(245,158,11,.1)'});
+    if (!wallet) $('#tester-wallet').css({'border-color':'rgba(245,158,11,.5)','box-shadow':'0 0 0 3px rgba(245,158,11,.1)'});
     return;
   }
   $('#scope-warning').addClass('hidden');
-  $('#tester-email, #tester-wallet').removeClass('border-amber-400 ring-1 ring-amber-300');
+  $('#tester-email, #tester-wallet').css({'border-color':'','box-shadow':''});
 
-  running  = true;
-  stopFlag = false;
+  running = true; stopFlag = false;
   let fired = 0;
-
-  $('#run-btn').addClass('hidden');
-  $('#stop-btn').removeClass('hidden');
-  $('#tester-status').text('Running…');
+  $('#run-btn').css('display','none');
+  $('#stop-btn').css('display','flex');
+  $('#run-status-label').html('<span class="pulse" style="color:#4f8ef7;">● Running…</span>');
 
   async function step() {
     if (stopFlag || fired >= total) {
       running = false;
-      $('#run-btn').removeClass('hidden');
-      $('#stop-btn').addClass('hidden');
-      $('#tester-status').text(stopFlag
+      $('#run-btn').css('display','flex');
+      $('#stop-btn').css('display','none');
+      $('#run-status-label').text(stopFlag
         ? `Stopped after ${fired} request${fired!==1?'s':''}`
         : `Done — ${fired} request${fired!==1?'s':''} fired`);
+      $('#tester-status').text('');
       return;
     }
-
     fired++;
     reqCount++;
     const result = await fireRequest(apiName, email, wallet);
     prependLogEntry(reqCount, apiName, email, wallet, result);
     await updateTierCards(apiName);
-
+    $('#tester-status').text(`${fired} / ${total}`);
     runTimer = setTimeout(step, delay);
   }
-
   step();
 }
 
-// ═══════════════════════════════════════════════
-//  CLEAR ALL USAGE
-// ═══════════════════════════════════════════════
-async function clearAllUsage() {
-  resolvedCache = {};
-  const apiName = $('#api-select').val();
-  await buildTierStatusCards(apiName);
-  await updateTierCards(apiName);
-  $('#tester-status').text('Refreshed');
-}
-
-// ═══════════════════════════════════════════════
-//  INIT
-// ═══════════════════════════════════════════════
+// ── INIT ──
 $(async function() {
-  try {
-    await fetchAPIList();
-  } catch(e) {
-    $('#config-summary').html('<p class="text-red-400 italic text-[10px]">Could not connect to server</p>');
-  }
+  try { await fetchAPIList(); }
+  catch { $('#config-summary').html('<span style="color:#ef4444;">Could not connect to server</span>'); }
 
   populateApiSelect();
 
@@ -539,36 +582,31 @@ $(async function() {
     await updateTierCards(firstApi);
   }
 
-  // API select change
   $('#api-select').on('change', async function() {
-    const apiName = $(this).val();
-    await buildTierStatusCards(apiName);
+    const a = $(this).val();
+    await buildTierStatusCards(a);
     await updateConfigSummary();
-    await updateTierCards(apiName);
+    await updateTierCards(a);
   });
 
-  // Input changes → refresh tier cards
   $('#tester-email, #tester-wallet').on('input', async function() {
-    $(this).removeClass('border-amber-400 ring-1 ring-amber-300');
-    const email  = $('#tester-email').val().trim();
-    const wallet = $('#tester-wallet').val().trim();
-    if (email && wallet) $('#scope-warning').addClass('hidden');
+    $(this).css({'border-color':'','box-shadow':''});
+    const e = $('#tester-email').val().trim(), w = $('#tester-wallet').val().trim();
+    if (e && w) $('#scope-warning').addClass('hidden');
     await updateTierCards($('#api-select').val());
   });
 
-  // Run button
   $('#run-btn').on('click', function() { if (!running) runTest(); });
+  $('#stop-btn').on('click', function() { stopFlag = true; clearTimeout(runTimer); });
 
-  // Stop button
-  $('#stop-btn').on('click', function() {
-    stopFlag = true;
-    clearTimeout(runTimer);
+  $('#clear-usage-btn').on('click', async function() {
+    resolvedCache = {};
+    const a = $('#api-select').val();
+    await buildTierStatusCards(a);
+    await updateTierCards(a);
+    $('#tester-status').text('Refreshed');
   });
 
-  // Clear usage
-  $('#clear-usage-btn').on('click', clearAllUsage);
-
-  // Clear log
   $('#clear-log-btn').on('click', function() {
     $('#log-entries').empty();
     $('#log-empty').show();
@@ -576,12 +614,10 @@ $(async function() {
     $('#req-badge').text('0 requests');
   });
 
-  // Poll tier cards every 4s (rolling window expiry)
   setInterval(async () => {
-    resolvedCache = {}; // let rolling windows re-evaluate fresh limits
+    resolvedCache = {};
     await updateTierCards($('#api-select').val());
   }, 4000);
-
 });
 </script>
 </body>

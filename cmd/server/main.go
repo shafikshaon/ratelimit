@@ -72,9 +72,14 @@ func main() {
 
 	apiHandler := handler.NewAPIHandler(apiSvc)
 
-	router := gin.Default()
+	router := gin.New()
+	router.Use(gin.Recovery())
 	router.Use(cors.Default())
 	router.Use(requestTimeoutMiddleware(10 * time.Second))
+	router.Use(func(c *gin.Context) {
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 64*1024)
+		c.Next()
+	})
 
 	router.GET("/health", healthHandler(db, redisClient))
 	router.GET("/ready", healthHandler(db, redisClient))
