@@ -7,7 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shafikshaon/ratelimit/internal/logger"
-	"github.com/shafikshaon/ratelimit/internal/repository"
+	"github.com/shafikshaon/ratelimit/internal/service"
 	"go.uber.org/zap"
 )
 
@@ -32,14 +32,14 @@ func runMigrations(db *pgxpool.Pool) error {
 	return nil
 }
 
-// warmTierCache pre-populates Redis for every API in PostgreSQL at startup.
-func warmTierCache(ctx context.Context, apiRepo *repository.APIRepository, tierRepo *repository.TierRepository) error {
-	apis, err := apiRepo.ListAll(ctx)
+// warmCache pre-populates Redis for every API in PostgreSQL at startup.
+func warmCache(ctx context.Context, svc *service.APIService) error {
+	apis, err := svc.ListAllAPIs(ctx)
 	if err != nil {
 		return err
 	}
 	for _, api := range apis {
-		if _, err := tierRepo.Get(ctx, api.Name); err != nil {
+		if _, err := svc.GetTierConfig(ctx, api.Name); err != nil {
 			logger.L.Warn("warm cache", zap.String("api", api.Name), zap.Error(err))
 		}
 	}
