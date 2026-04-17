@@ -2,152 +2,139 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project Overview
+## Commands
 
-A browser-based prototype for configuring and testing a multi-tier API rate limiting system. Designed for a financial API platform (wallets, payments, merchants) where different APIs have independent rate limits scoped by email and wallet.
-
-## Running the App
-
-**Docker (recommended):**
 ```bash
-docker-compose up
+# Run (hot-reload)
+air                        # requires Air installed
+go run ./cmd/server        # without hot-reload
+
+# Build
+go build ./...
+
+# Docker (all services)
+docker-compose up          # starts Postgres, Redis, ScyllaDB + viewers + app
+
+# Environment
+cp .env.example .env       # then edit as needed
 ```
-Starts PostgreSQL and the Go API server with Air hot-reload. Migrations run automatically on startup.
 
-**Local Go server:**
-```bash
-cp .env.example .env
-go mod download
-air                          # hot-reload via air
-# or: go run ./cmd/server
-```
-
-**Frontend only:** Open `index.html` or `tester.html` directly in a browser (no server needed).
-
-## API
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/v1/apis` | List all APIs grouped by category |
-
-Response shape:
-```json
-{
-  "data": [
-    {
-      "name": "BALANCE",
-      "count": 3,
-      "apis": [
-        {
-          "id": 1,
-          "name": "view_current_balance",
-          "group": "BALANCE",
-          "tiers": [{ "tier": 1, "scope": "email", "unit": "seconds", ... }]
-        }
-      ]
-    }
-  ]
-}
-```
+There are no tests. Migrations run automatically at startup from `migrations/` in filename order (idempotent — `ON CONFLICT DO NOTHING`).
 
 ## Architecture
 
-### Two-Page Frontend Application
+### Request hot path
 
-**`index.html`** — Configuration interface (~1000 lines)
-- Define per-API rate limit tiers (windows, limits, action modes)
-- Manage per-wallet overrides with audit trail (reason field)
-- Live usage visualization with usage bars per tier
+`POST /api/v1/apis/:name/check` is the performance-critical path. It runs in **2 Redis RTTs** on a warm cache:
 
-**`tester.html`** — Testing and simulation tool (~670 lines)
-- Fire N requests against a selected API with configurable email/wallet scope
-- Real-time tier status cards (pass / throttled / blocked)
-- Detailed per-request log showing tier-by-tier enforcement results
+1. **Process memory** (`configMem` map, guarded by `sync.RWMutex`) → tier config, zero network
+2. **Redis GET** → override raw value for the wallet
+3. **Redis EVALSHA** → single atomic Lua script checks and increments all tier counters in sequence, stopping at the first blocked tier
 
-### Data Flow
+On a cold cache, step 1 becomes an MGET (config + override together) then a PostgreSQL fallback.
 
-Both pages share state via `localStorage`:
-- Config key: `ratelimit_config_v2` — API definitions and overrides
-- Usage key: `ratelimit_usage_v2` — Request timestamps per scope/tier
-- Cross-tab sync via `window.addEventListener('storage', ...)`
+### Three storage layers
 
-### Three-Tier Rate Limiting Model
+| Store | Keys / Tables | Purpose |
+|-------|--------------|---------|
+| PostgreSQL | `apis`, `api_tiers` | Source of truth for tier config |
+| Redis | `rl:config:{api}`, `rl:override:{api}:{wallet}`, `rl:usage:...` | Process cache (no TTL for config), override cache (30 min TTL), rate-limit counters |
+| ScyllaDB | `{keyspace}.api_overrides` | Per-wallet override storage; partition key = `api_name`; cursor pagination via page-state tokens |
 
-Each API has up to 3 independent tiers evaluated in sequence:
+### Cache invalidation order
 
-| Tier | Scope | Typical Window |
-|------|-------|---------------|
-| T1 | Email | Seconds |
-| T2 | Wallet | Hours |
-| T3 | Wallet | Daily |
+`UpdateTier` deletes the **Redis key first**, then the **process memory key**. This prevents a concurrent reader from repopulating stale memory from stale Redis between the two deletions.
 
-**Action modes**: `transparent` (count but allow) vs `enforce` (block when exceeded)
+Override writes/deletes call `redis.DeleteOverrideCache` immediately after ScyllaDB so the next read gets fresh data.
 
-**Window types**:
-- `seconds` / `minutes` / `hours`: Rolling window using stored timestamp arrays
-- `daily`: Fixed window resetting at a configurable hour (0–23)
+### Lua script (`checkAllScript` in `redis_service.go`)
 
-### Override Resolution
+Replaces 3 sequential EVALSHAs with one atomic execution. Accepts N keys + 3 ARGV per tier (limit, ttl, expireAt). Returns `[pass, count, ...]` pairs — `pass` is `1` (allowed), `0` (blocked), or `-1` (skipped because a prior tier blocked). Real atomicity: Lua runs single-threaded in Redis.
+
+Tiers with an empty `scopeID` (e.g. email-scoped T1 when no email is provided) are **excluded** from the Lua call entirely and filled as "skipped" in memory afterward — they must not be sent as zero-limit keys or they would falsely block subsequent tiers.
+
+### Three-tier rate limiting model
+
+| Tier | Scope | Typical window | Reset |
+|------|-------|---------------|-------|
+| T1 | email | seconds/minutes | rolling |
+| T2 | wallet | hours | rolling |
+| T3 | wallet | daily | fixed at `reset_hour` in Asia/Dhaka (BDT, UTC+6) |
+
+Daily reset uses `EXPIREAT` (Unix timestamp of next reset). Rolling windows use `EXPIRE` (TTL in seconds).
+
+### Override resolution
 
 ```
-Per-wallet override for this API exists?
-  → value != "global": use override limit
-  → value == "global": use tier default
-No override: use tier default
+raw == ""               → cache miss → ScyllaDB lookup → re-cache
+raw == "null"           → negatively cached (no override exists)
+raw == corrupt JSON     → evict from Redis → ScyllaDB fallback
+override value == ""
+  or "global"           → use tier's global default
+override value == "N"   → use N as effective max (capped at 10_000_000)
 ```
 
-### Key Functions (tester.html)
+### Key design decisions
 
-- `fireRequest(apiName, email, wallet)` — Core enforcement logic; returns `{ allowed, tiers[] }`
-- `getCurrentCount(key, window, unit, resetHour)` — Rolling/daily window count
-- `recordRequest(key)` — Appends timestamp to usage log in localStorage
-- `runTest()` — Fires N requests with delay, updates log and tier cards
+- **`usageKey()`** strips `{` and `}` from email/wallet before substituting into Redis key templates — prevents template injection.
+- **`WarmCache()`** uses a single JOIN query (`GetAllTiers`) to populate all APIs at startup with no N+1.
+- **`GetTiers()`** returns `nil` for "API not found" and `[]model.Tier{}` (non-nil empty slice) for "API exists, no tiers" — callers distinguish these to avoid false 404s.
+- **`overrideCacheTTL = 30 * time.Minute`** — overrides only change via explicit operator action.
+- **ScyllaDB page tokens** are size-checked on the *encoded* string before decoding (`len(pageToken) > (maxPageTokenBytes*4/3)+10`) to prevent OOM from crafted large tokens.
+- **`gin.New()` + `gin.Recovery()`** — default Gin logger is disabled; all structured logging goes through Zap. Redis/pgx/Scylla hooks gate `fmt.Sprintf` behind `L.Core().Enabled(zapcore.DebugLevel)` to avoid hot-path allocations in production.
+- **Request body capped at 64 KB** via `http.MaxBytesReader` middleware.
+- **10 s request timeout** via `requestTimeoutMiddleware`; HTTP server Read/Write timeouts are 15 s.
 
-### Key Functions (index.html)
-
-- `loadConfig()` / `persist()` — Read/write config to localStorage
-- `buildTierCard(t, idx)` — Renders a tier control card with all fields
-- `buildOverridesCard(apiName)` — Override management: lookup, add, edit, delete
-- `refreshUsageOnCards(apiName)` — Updates live usage bars
-
-## Go Project Structure
+## Go Package Layout
 
 ```
 cmd/server/
-  main.go       — server bootstrap, graceful shutdown
-  migrate.go    — runs SQL files from migrations/ at startup
+  main.go        — wires everything: DB connections, service layer, router, graceful shutdown
+  migrate.go     — reads migrations/ sorted by filename, executes each in a transaction
+  middleware.go  — requestTimeoutMiddleware, healthHandler (/health, /ready)
+
 internal/
-  config/       — env-based config (DB_HOST, SERVER_PORT, etc.)
-  database/     — pgxpool connection setup
-  handler/      — Gin HTTP handlers
-  model/        — shared structs (API, Tier, APIGroup)
-  repository/   — SQL queries against postgres
+  config/        — env vars → Config struct; Config.DSN() builds postgres DSN
+  database/      — connection factories (pgxpool, redis.Client, gocql.Session + schema init)
+  handler/       — thin HTTP layer; all validation lives here, all business logic in service
+  service/
+    api_service.go     — orchestration: hot/cold path, cache hierarchy, Check(), GetUsage(), overrides
+    redis_service.go   — Redis ops + Lua script; CheckAndIncrementAll(), GetUsageWithTTL()
+    postgres_service.go— SQL: GetAllTiers (JOIN), GetTiers, UpdateTier, ListGrouped, ListAll
+    scylla_service.go  — ScyllaDB CRUD + cursor pagination; keyspace validated by regex at startup
+  logger/        — Zap setup + hooks for Redis, pgx, ScyllaDB (PII gated behind debug level)
+  model/         — shared structs: API, Tier, APIGroup, Override, ResolvedConfig, ResolvedTier
+  dto/           — request/response shapes; CheckResponse, TierUsage, OverridePageResponse
+
 migrations/
-  001_init.sql  — schema creation + idempotent seed data
+  001_init.sql   — creates apis + api_tiers tables; seeds sample APIs idempotently
 ```
 
-Migrations are idempotent (`ON CONFLICT DO NOTHING`) and run on every startup from `migrations/` in filename order.
+## Full API Reference
 
-## Storage Architecture
+| Method | Path | Handler |
+|--------|------|---------|
+| GET | `/api/v1/apis` | ListAPIs — grouped by category |
+| GET | `/api/v1/apis/:name` | GetAPI — tiers for one API |
+| PATCH | `/api/v1/apis/:name/tiers/:tier` | UpdateTier — tier must be 1–3 |
+| GET | `/api/v1/apis/:name/config/:wallet` | GetWalletConfig — resolved limits (override applied) |
+| POST | `/api/v1/apis/:name/check` | CheckRequest — enforces rate limit, increments counters |
+| GET | `/api/v1/apis/:name/usage` | GetUsage — current counters + TTLs (`?email=&wallet=`) |
+| GET | `/api/v1/apis/:name/overrides` | ListOverrides — paginated (`?limit=&page_token=`) |
+| POST | `/api/v1/apis/:name/overrides` | CreateOverride |
+| DELETE | `/api/v1/apis/:name/overrides/:wallet` | DeleteOverride |
+| GET | `/health`, `/ready` | healthHandler — probes Postgres + Redis |
 
-| Store | What lives there | Why |
-|-------|-----------------|-----|
-| **PostgreSQL** | `apis` (registry) + `api_tiers` (tier config source of truth) | Durable, transactional |
-| **Redis** | Read-through cache for tier configs (`rl:config:{api_name}`) | Fast reads; invalidated on write |
-| **ScyllaDB** | Per-wallet overrides (`ratelimit.api_overrides`) | Partition key = `api_name`; supports millions of rows + native cursor pagination |
+## Frontend
 
-On startup the app warms the Redis cache for every API in PostgreSQL. A tier `PATCH` writes to PostgreSQL then deletes the Redis key so the next read is fresh.
+`index.html` (configuration UI) and `tester.html` (request simulator) are served as static files. They call the backend API directly — no localStorage, no simulation. Both use **Inter** (body) and **JetBrains Mono** (code/keys) from Google Fonts, Tailwind CSS (CDN), and jQuery 3.7.1.
 
-Override pagination uses ScyllaDB page-state tokens (base64-encoded), not offset. Requests: `GET /api/v1/apis/:name/overrides?limit=20&page_token=<token>`.
+- `index.html` served at both `/` and `/index.html`
+- `tester.html` served at `/tester.html`
 
 ## Tech Stack
 
-**Backend:** Go 1.23 · Gin · pgx/v5 · go-redis/v9 · gocql · Air (hot-reload)  
-**Frontend:** Vanilla JavaScript (ES6) + jQuery 3.7.1 · Tailwind CSS (CDN)  
-**Infrastructure:** PostgreSQL 16 · Redis 7 · ScyllaDB 5.4 · Docker Compose
-
-## Backend Integration (Not Yet Implemented)
-
-The UI header references "Redis + DynamoDB" — this prototype simulates what would be:
-- **Redis**: Rolling window timestamp storage
-- **DynamoDB**: Persistent API config and override storage
+**Backend:** Go 1.23 · Gin · pgx/v5 · go-redis/v9 · gocql · Air  
+**Frontend:** Vanilla JS · jQuery 3.7.1 · Tailwind CSS (CDN)  
+**Infra:** PostgreSQL 18 · Redis 7 · ScyllaDB 6.2 · Docker Compose  
+**Viewers:** Adminer `:8082` · RedisInsight `:5540` · cassandra-web `:3000`

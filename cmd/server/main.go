@@ -85,6 +85,7 @@ func main() {
 	router.GET("/ready", healthHandler(db, redisClient))
 
 	router.StaticFile("/", "./index.html")
+	router.StaticFile("/index.html", "./index.html")
 	router.StaticFile("/tester.html", "./tester.html")
 
 	v1 := router.Group("/api/v1")
