@@ -60,6 +60,7 @@ func main() {
 	redisSvc := service.NewRedisService(redisClient)
 	scyllaSvc := service.NewScyllaService(scyllaSession, cfg.ScyllaKeyspace)
 	apiSvc := service.NewAPIService(pgSvc, redisSvc, scyllaSvc)
+	fpSvc := service.NewFingerprintService(redisClient, []byte(cfg.FingerprintSecret), cfg.FingerprintTTLHours)
 
 	// Warm Redis cache at startup so the first requests don't hit PostgreSQL.
 	wctx, wcancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -70,11 +71,21 @@ func main() {
 
 	// ── HTTP layer ────────────────────────────────────────────────────────────
 
-	apiHandler := handler.NewAPIHandler(apiSvc)
+	apiHandler := handler.NewAPIHandler(apiSvc, fpSvc)
+	fpHandler := handler.NewFingerprintHandler(fpSvc, cfg.AllowedOrigins)
+
+	corsConfig := cors.Config{
+		AllowOrigins:     cfg.AllowedOrigins,
+		AllowMethods:     []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: false,
+		MaxAge:           12 * time.Hour,
+	}
 
 	router := gin.New()
 	router.Use(gin.Recovery())
-	router.Use(cors.Default())
+	router.Use(cors.New(corsConfig))
 	router.Use(requestTimeoutMiddleware(10 * time.Second))
 	router.Use(func(c *gin.Context) {
 		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 64*1024)
@@ -87,6 +98,7 @@ func main() {
 	router.StaticFile("/", "./index.html")
 	router.StaticFile("/index.html", "./index.html")
 	router.StaticFile("/tester.html", "./tester.html")
+	router.StaticFile("/fingerprint.html", "./fingerprint.html")
 
 	v1 := router.Group("/api/v1")
 	{
@@ -99,6 +111,12 @@ func main() {
 		v1.GET("/apis/:name/overrides", apiHandler.ListOverrides)
 		v1.POST("/apis/:name/overrides", apiHandler.CreateOverride)
 		v1.DELETE("/apis/:name/overrides/:wallet", apiHandler.DeleteOverride)
+
+		fp := v1.Group("/fingerprint")
+		{
+			fp.GET("/challenge", fpHandler.Challenge)
+			fp.POST("/token", fpHandler.Token)
+		}
 	}
 
 	srv := &http.Server{

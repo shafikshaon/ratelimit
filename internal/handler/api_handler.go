@@ -51,11 +51,12 @@ func isValidOverrideTier(v string) bool {
 
 // APIHandler is a thin HTTP layer that delegates all business logic to APIService.
 type APIHandler struct {
-	svc *service.APIService
+	svc   *service.APIService
+	fpSvc *service.FingerprintService
 }
 
-func NewAPIHandler(svc *service.APIService) *APIHandler {
-	return &APIHandler{svc: svc}
+func NewAPIHandler(svc *service.APIService, fpSvc *service.FingerprintService) *APIHandler {
+	return &APIHandler{svc: svc, fpSvc: fpSvc}
 }
 
 // ListAPIs GET /api/v1/apis
@@ -197,6 +198,21 @@ func (h *APIHandler) CheckRequest(c *gin.Context) {
 	// At least one identifier is required.
 	if req.Email == "" && req.Wallet == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "email or wallet is required"})
+		return
+	}
+
+	// Verify fingerprint session — requires BOTH httpOnly cookies:
+	//   fp_token: HMAC-signed session token (contains session_id in its payload)
+	//   fp_sid:   opaque session ID (must match what's encoded in fp_token)
+	// An attacker needs both cookies. Both are httpOnly — JS cannot read either.
+	fpToken, fpSID := ReadFPCookies(c)
+	if fpToken == "" || fpSID == "" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "fingerprint required"})
+		return
+	}
+	if err := h.fpSvc.VerifyToken(c.Request.Context(), fpToken, fpSID); err != nil {
+		logger.L.Debug("fingerprint verify failed", zap.Error(err))
+		c.JSON(http.StatusForbidden, gin.H{"error": "invalid or expired fingerprint"})
 		return
 	}
 

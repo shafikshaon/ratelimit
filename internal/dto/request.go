@@ -14,6 +14,22 @@ type CheckRequest struct {
 	Wallet string `json:"wallet"`
 }
 
+// FingerprintTokenRequest is the body for POST /fingerprint/token.
+type FingerprintTokenRequest struct {
+	Nonce       string `json:"nonce"`
+	HMACNonce   string `json:"hmac_nonce"`
+	FPHash      string `json:"fp_hash"`
+	PowSolution string `json:"pow_solution"`  // hex string; must satisfy PoW difficulty
+	CollectedAt int64  `json:"collected_at"`  // unix seconds when signals were collected
+	BotSignals  struct {
+		Webdriver    bool `json:"webdriver"`
+		OuterWidth   int  `json:"outer_width"`
+		OuterHeight  int  `json:"outer_height"`
+		PluginCount  int  `json:"plugin_count"`
+		ChromeObject bool `json:"chrome_object"`
+	} `json:"bot_signals"`
+}
+
 // CreateOverrideRequest is the body for POST /apis/:name/overrides.
 type CreateOverrideRequest struct {
 	Wallet string `json:"wallet"`

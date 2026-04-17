@@ -297,6 +297,133 @@
 <script>
 const API_BASE = '/api/v1';
 
+// ── Fingerprint helpers ───────────────────────────────────────────────────────
+const fp = {
+  hash: null,       // SHA-256 of collected signals
+  botSignals: null, // bot-detection fields
+  issuedAt: 0,      // ms when cookies were last set (0 = need new session)
+  ttlMs: 23 * 3600 * 1000, // 23h — slightly under server's FINGERPRINT_TTL_HOURS (default 24h)
+  // NOTE: fp_token and fp_sid are httpOnly cookies; JS cannot read their values
+};
+
+async function sha256hex(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+async function collectFPSignals() {
+  function webglInfo() {
+    try {
+      const c = document.createElement('canvas');
+      const gl = c.getContext('webgl') || c.getContext('experimental-webgl');
+      if (!gl) return { renderer:'n/a', vendor:'n/a' };
+      const ext = gl.getExtension('WEBGL_debug_renderer_info');
+      return {
+        renderer: ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER),
+        vendor:   ext ? gl.getParameter(ext.UNMASKED_VENDOR_WEBGL)   : gl.getParameter(gl.VENDOR),
+      };
+    } catch { return { renderer:'n/a', vendor:'n/a' }; }
+  }
+  async function canvasHash() {
+    try {
+      const c = document.createElement('canvas'); c.width=240; c.height=60;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle='#f60'; ctx.fillRect(125,1,62,20);
+      ctx.fillStyle='#069'; ctx.font='11pt Arial'; ctx.fillText('RL-fp',2,15);
+      return await sha256hex(c.toDataURL());
+    } catch { return 'n/a'; }
+  }
+  async function audioHash() {
+    try {
+      const ctx = new OfflineAudioContext(1,44100,44100);
+      const osc = ctx.createOscillator(); const comp = ctx.createDynamicsCompressor();
+      osc.type='triangle'; osc.frequency.setValueAtTime(10000,ctx.currentTime);
+      osc.connect(comp); comp.connect(ctx.destination); osc.start(0); osc.stop(0.1);
+      const buf = await ctx.startRendering();
+      return await sha256hex(buf.getChannelData(0).slice(4500,5000).join(','));
+    } catch { return 'n/a'; }
+  }
+  const [ch, ah, wgl] = await Promise.all([canvasHash(), audioHash(), Promise.resolve(webglInfo())]);
+  const botSignals = {
+    webdriver: !!navigator.webdriver,
+    outer_width: window.outerWidth,
+    outer_height: window.outerHeight,
+    plugin_count: navigator.plugins.length,
+    chrome_object: typeof window.chrome !== 'undefined',
+  };
+  const signals = {
+    canvas_hash: ch, webgl_renderer: wgl.renderer, webgl_vendor: wgl.vendor,
+    audio_hash: ah,
+    screen: `${screen.width}x${screen.height}`, color_depth: screen.colorDepth,
+    tz_offset: new Date().getTimezoneOffset(), language: navigator.language,
+    platform: navigator.platform, hw_concurrency: navigator.hardwareConcurrency,
+    device_memory: navigator.deviceMemory||'unknown', touch: navigator.maxTouchPoints>0,
+    cookies_enabled: navigator.cookieEnabled, plugin_count: navigator.plugins.length,
+    webdriver: botSignals.webdriver, outer_dims: `${botSignals.outer_width}x${botSignals.outer_height}`,
+  };
+  return { hash: await sha256hex(JSON.stringify(signals)), botSignals };
+}
+
+async function solvePoW(nonce, difficulty) {
+  const target = new Uint8Array(difficulty);
+  let counter = 0;
+  while (true) {
+    const solution = counter.toString(16).padStart(16,'0');
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(nonce + solution));
+    const bytes = new Uint8Array(buf);
+    let match = true;
+    for (let i = 0; i < difficulty; i++) { if (bytes[i] !== 0) { match=false; break; } }
+    if (match) return solution;
+    counter++;
+    if (counter % 500 === 0) await new Promise(r => setTimeout(r, 0)); // yield
+  }
+}
+
+// acquireFPCookie: calls challenge + PoW + /fingerprint/token to set the
+// httpOnly cookie. The cookie value is invisible to JS — the browser sends it
+// automatically on the next same-origin /api/v1/apis/... request.
+async function acquireFPCookie() {
+  // Re-use if still within TTL
+  if (fp.issuedAt && Date.now() - fp.issuedAt < fp.ttlMs) return;
+
+  // Collect signals if not yet done
+  if (!fp.hash) {
+    const { hash, botSignals } = await collectFPSignals();
+    fp.hash = hash;
+    fp.botSignals = botSignals;
+  }
+
+  // Get challenge
+  const cr = await fetch(`${API_BASE}/fingerprint/challenge`);
+  if (!cr.ok) throw new Error('fingerprint challenge failed');
+  const ch = await cr.json();
+
+  // Solve PoW
+  const solution = await solvePoW(ch.nonce, ch.difficulty);
+
+  // Request token — server sets httpOnly cookie, returns only expires_in
+  const tr = await fetch(`${API_BASE}/fingerprint/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      nonce: ch.nonce, hmac_nonce: ch.hmac_nonce,
+      fp_hash: fp.hash, pow_solution: solution,
+      collected_at: Math.floor(Date.now()/1000),
+      bot_signals: {
+        webdriver:    fp.botSignals.webdriver,
+        outer_width:  fp.botSignals.outer_width,
+        outer_height: fp.botSignals.outer_height,
+        plugin_count: fp.botSignals.plugin_count,
+        chrome_object: fp.botSignals.chrome_object,
+      },
+    }),
+  });
+  if (!tr.ok) { const e = await tr.json(); throw new Error(e.error || 'token request failed'); }
+  fp.issuedAt = Date.now();
+  // fp.token is not set — JS cannot read httpOnly cookies.
+}
+// ── End fingerprint helpers ───────────────────────────────────────────────────
+
 function formatResetIn(s) {
   if (!s || s < 0) return null;
   const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), ss = s%60;
@@ -443,11 +570,18 @@ async function updateTierCards(name) {
 
 async function fireRequest(name, email, wallet) {
   try {
-    const r=await fetch(`${API_BASE}/apis/${encodeURIComponent(name)}/check`,
-      {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,wallet})});
+    // Acquire httpOnly session cookies if not already set or expired.
+    // Long-lived: once issued, the same session is reused for up to ttlMs.
+    await acquireFPCookie();
+    const r=await fetch(`${API_BASE}/apis/${encodeURIComponent(name)}/check`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      credentials:'include', // send httpOnly cookies
+      body:JSON.stringify({email,wallet}),
+    });
     const d=await r.json();
     return {allowed:d.allowed??false,tierResults:d.tier_results??[]};
-  } catch { return {allowed:false,tierResults:[]}; }
+  } catch(e) { return {allowed:false,tierResults:[],error:e.message}; }
 }
 
 function prependLogEntry(n, name, email, wallet, result) {
