@@ -55,20 +55,6 @@ type UsageResponse struct {
 	Data []TierUsage `json:"data"`
 }
 
-// ── Fingerprint ───────────────────────────────────────────────────────────────
-
-type ChallengeResponse struct {
-	Nonce      string `json:"nonce"`
-	HMACNonce  string `json:"hmac_nonce"`
-	Difficulty int    `json:"difficulty"` // PoW: number of leading zero bytes required
-	ExpiresIn  int    `json:"expires_in"`
-}
-
-type TokenResponse struct {
-	// Token is intentionally omitted — it is set as an httpOnly cookie, never in the body.
-	ExpiresIn int `json:"expires_in"`
-}
-
 // ── Overrides ─────────────────────────────────────────────────────────────────
 
 type OverridePageResponse struct {

@@ -60,8 +60,6 @@ func main() {
 	redisSvc := service.NewRedisService(redisClient)
 	scyllaSvc := service.NewScyllaService(scyllaSession, cfg.ScyllaKeyspace)
 	apiSvc := service.NewAPIService(pgSvc, redisSvc, scyllaSvc)
-	fpSvc := service.NewFingerprintService(redisClient, []byte(cfg.FingerprintSecret), cfg.FingerprintTTLHours)
-
 	// Warm Redis cache at startup so the first requests don't hit PostgreSQL.
 	wctx, wcancel := context.WithTimeout(context.Background(), 30*time.Second)
 	if err := warmCache(wctx, apiSvc); err != nil {
@@ -71,13 +69,12 @@ func main() {
 
 	// ── HTTP layer ────────────────────────────────────────────────────────────
 
-	apiHandler := handler.NewAPIHandler(apiSvc, fpSvc)
-	fpHandler := handler.NewFingerprintHandler(fpSvc, cfg.AllowedOrigins)
+	apiHandler := handler.NewAPIHandler(apiSvc)
 
 	corsConfig := cors.Config{
-		AllowOrigins:     cfg.AllowedOrigins,
+		AllowOrigins:     []string{"*"},
 		AllowMethods:     []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "X-Request-Token"},
+		AllowHeaders:     []string{"Origin", "Content-Type"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: false,
 		MaxAge:           12 * time.Hour,
@@ -98,7 +95,6 @@ func main() {
 	router.StaticFile("/", "./index.html")
 	router.StaticFile("/index.html", "./index.html")
 	router.StaticFile("/tester.html", "./tester.html")
-	router.StaticFile("/fingerprint.html", "./fingerprint.html")
 
 	v1 := router.Group("/api/v1")
 	{
@@ -112,12 +108,6 @@ func main() {
 		v1.POST("/apis/:name/overrides", apiHandler.CreateOverride)
 		v1.DELETE("/apis/:name/overrides/:wallet", apiHandler.DeleteOverride)
 
-		fp := v1.Group("/fingerprint")
-		{
-			fp.GET("/challenge", fpHandler.Challenge)
-			fp.POST("/token", fpHandler.Token)
-			fp.GET("/request-token", fpHandler.RequestToken)
-		}
 	}
 
 	srv := &http.Server{

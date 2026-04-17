@@ -51,12 +51,11 @@ func isValidOverrideTier(v string) bool {
 
 // APIHandler is a thin HTTP layer that delegates all business logic to APIService.
 type APIHandler struct {
-	svc   *service.APIService
-	fpSvc *service.FingerprintService
+	svc *service.APIService
 }
 
-func NewAPIHandler(svc *service.APIService, fpSvc *service.FingerprintService) *APIHandler {
-	return &APIHandler{svc: svc, fpSvc: fpSvc}
+func NewAPIHandler(svc *service.APIService) *APIHandler {
+	return &APIHandler{svc: svc}
 }
 
 // ListAPIs GET /api/v1/apis
@@ -198,38 +197,6 @@ func (h *APIHandler) CheckRequest(c *gin.Context) {
 	// At least one identifier is required.
 	if req.Email == "" && req.Wallet == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "email or wallet is required"})
-		return
-	}
-
-	// Verify fingerprint session — requires BOTH httpOnly cookies:
-	//   fp_token: HMAC-signed session token (contains session_id in its payload)
-	//   fp_sid:   opaque session ID (must match what's encoded in fp_token)
-	// An attacker needs both cookies. Both are httpOnly — JS cannot read either.
-	fpToken, fpSID := ReadFPCookies(c)
-	if fpToken == "" || fpSID == "" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "fingerprint required"})
-		return
-	}
-	if err := h.fpSvc.VerifyToken(c.Request.Context(), fpToken, fpSID); err != nil {
-		logger.L.Debug("fingerprint verify failed", zap.Error(err))
-		c.JSON(http.StatusForbidden, gin.H{"error": "invalid or expired fingerprint"})
-		return
-	}
-
-	// Verify per-request single-use token (X-Request-Token header).
-	// This token is fetched from /api/v1/fingerprint/request-token immediately
-	// before each /check call and consumed atomically here (GETDEL in Redis).
-	// Effect: "Copy as cURL" fails instantly — the token was already consumed
-	// by the browser's original request. A script with stolen cookies still can't
-	// replay because /request-token also enforces Origin and requires valid cookies.
-	reqToken := c.GetHeader("X-Request-Token")
-	if reqToken == "" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "request token required"})
-		return
-	}
-	if err := h.fpSvc.VerifyRequestToken(c.Request.Context(), reqToken, fpSID); err != nil {
-		logger.L.Debug("request token verify failed", zap.Error(err))
-		c.JSON(http.StatusForbidden, gin.H{"error": "invalid, expired, or already-used request token"})
 		return
 	}
 
