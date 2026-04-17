@@ -96,10 +96,13 @@ services:
       SCYLLA_HOSTS: scylla
       SCYLLA_KEYSPACE: ratelimit
       SERVER_PORT: 8080
+      LOG_LEVEL: debug
+      LOG_FILE: /app/logs/app.log
     volumes:
       - .:/app
       - go_modules:/root/go/pkg/mod
       - go_cache:/root/.cache/go-build
+      - ./logs:/app/logs
     depends_on:
       postgres:
         condition: service_healthy

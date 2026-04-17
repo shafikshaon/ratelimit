@@ -84,10 +84,21 @@ Tables: `api_overrides`
 
 Structured logging via **Uber Zap**. Every PostgreSQL query, Redis command/pipeline, and ScyllaDB statement is logged with full arguments and duration.
 
-| Env var | Default | Options |
-|---------|---------|---------|
+Logs are written to **both** the console and a rotating JSON file simultaneously.
+
+| Env var | Default | Description |
+|---------|---------|-------------|
 | `LOG_LEVEL` | `debug` | `debug` · `info` · `warn` · `error` |
-| `GIN_MODE` | _(unset)_ | `release` → JSON logs; otherwise coloured console |
+| `LOG_FILE` | `logs/app.log` | Path to the log file |
+| `GIN_MODE` | _(unset)_ | `release` → JSON console; otherwise coloured console |
+
+**Log file rotation** (via lumberjack):
+- Max size: **100 MB** per file
+- Keeps: **7** rotated backups
+- Max age: **30 days**
+- Rotated files are **gzip compressed**
+
+Log files are written to `logs/` (excluded from git).
 
 ## Timezone
 
