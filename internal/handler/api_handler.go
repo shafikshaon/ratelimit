@@ -216,6 +216,23 @@ func (h *APIHandler) CheckRequest(c *gin.Context) {
 		return
 	}
 
+	// Verify per-request single-use token (X-Request-Token header).
+	// This token is fetched from /api/v1/fingerprint/request-token immediately
+	// before each /check call and consumed atomically here (GETDEL in Redis).
+	// Effect: "Copy as cURL" fails instantly — the token was already consumed
+	// by the browser's original request. A script with stolen cookies still can't
+	// replay because /request-token also enforces Origin and requires valid cookies.
+	reqToken := c.GetHeader("X-Request-Token")
+	if reqToken == "" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "request token required"})
+		return
+	}
+	if err := h.fpSvc.VerifyRequestToken(c.Request.Context(), reqToken, fpSID); err != nil {
+		logger.L.Debug("request token verify failed", zap.Error(err))
+		c.JSON(http.StatusForbidden, gin.H{"error": "invalid, expired, or already-used request token"})
+		return
+	}
+
 	result, err := h.svc.Check(c.Request.Context(), apiName, req.Email, req.Wallet)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "check failed"})

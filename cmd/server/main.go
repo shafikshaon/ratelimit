@@ -77,7 +77,7 @@ func main() {
 	corsConfig := cors.Config{
 		AllowOrigins:     cfg.AllowedOrigins,
 		AllowMethods:     []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "X-Request-Token"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: false,
 		MaxAge:           12 * time.Hour,
@@ -116,6 +116,7 @@ func main() {
 		{
 			fp.GET("/challenge", fpHandler.Challenge)
 			fp.POST("/token", fpHandler.Token)
+			fp.GET("/request-token", fpHandler.RequestToken)
 		}
 	}
 
