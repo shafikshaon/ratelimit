@@ -70,6 +70,34 @@ func (s *PostgresService) ListAll(ctx context.Context) ([]model.API, error) {
 	return apis, rows.Err()
 }
 
+// GetAllTiers fetches every tier for every API in a single query, returning a map of api_name → tiers.
+// Used at startup to warm caches without an N+1 per API.
+func (s *PostgresService) GetAllTiers(ctx context.Context) (map[string][]model.Tier, error) {
+	rows, err := s.db.Query(ctx, `
+		SELECT a.name, t.id, t.tier, t.scope, t.redis_key, t.window_size, t.window_unit,
+		       t.max_requests, t.reset_hour
+		FROM api_tiers t
+		JOIN apis a ON t.api_id = a.id
+		ORDER BY a.name, t.tier
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string][]model.Tier)
+	for rows.Next() {
+		var apiName string
+		var t model.Tier
+		if err := rows.Scan(&apiName, &t.ID, &t.Tier, &t.Scope, &t.RedisKey,
+			&t.Window, &t.Unit, &t.MaxRequests, &t.ResetHour); err != nil {
+			return nil, err
+		}
+		result[apiName] = append(result[apiName], t)
+	}
+	return result, rows.Err()
+}
+
 // GetTiers fetches the full tier configuration for a single API from PostgreSQL.
 func (s *PostgresService) GetTiers(ctx context.Context, apiName string) ([]model.Tier, error) {
 	rows, err := s.db.Query(ctx, `

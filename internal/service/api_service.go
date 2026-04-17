@@ -10,11 +10,20 @@ import (
 	"time"
 
 	"github.com/shafikshaon/ratelimit/internal/dto"
+	"github.com/shafikshaon/ratelimit/internal/logger"
 	"github.com/shafikshaon/ratelimit/internal/model"
+	"go.uber.org/zap"
 )
 
 // errNotFound is returned when an update targets a row that does not exist.
 var errNotFound = errors.New("not found")
+
+const (
+	// maxOverrideLimit caps the per-wallet override to prevent runaway limits.
+	maxOverrideLimit = 10_000_000
+	// maxScopeIDLen caps the length of email/wallet to prevent key bloat.
+	maxScopeIDLen = 256
+)
 
 func IsNotFound(err error) bool { return errors.Is(err, errNotFound) }
 
@@ -78,6 +87,20 @@ func (s *APIService) ListAllAPIs(ctx context.Context) ([]model.API, error) {
 	return s.postgres.ListAll(ctx)
 }
 
+// WarmCache fetches all API tiers in a single SQL query and populates the
+// process-level memory cache and Redis in bulk — no N+1 queries.
+func (s *APIService) WarmCache(ctx context.Context) error {
+	allTiers, err := s.postgres.GetAllTiers(ctx)
+	if err != nil {
+		return err
+	}
+	for apiName, tiers := range allTiers {
+		s.memSet(apiName, tiers)
+		s.redis.SetTierConfig(ctx, apiName, tiers)
+	}
+	return nil
+}
+
 // GetTierConfig returns tiers for apiName. Read order: process memory → Redis → PostgreSQL.
 func (s *APIService) GetTierConfig(ctx context.Context, apiName string) ([]model.Tier, error) {
 	// 1. Process memory (zero network cost)
@@ -102,59 +125,29 @@ func (s *APIService) GetTierConfig(ctx context.Context, apiName string) ([]model
 	return tiers, nil
 }
 
-// UpdateTier writes to PostgreSQL then invalidates process memory and Redis cache.
+// UpdateTier writes to PostgreSQL then invalidates caches.
+// Redis is invalidated before process memory so a concurrent reader can't repopulate
+// memory from stale Redis data in the window between the two deletions.
 func (s *APIService) UpdateTier(ctx context.Context, apiName string, tierNum int, t model.Tier) error {
 	if err := s.postgres.UpdateTier(ctx, apiName, tierNum, t); err != nil {
 		return err
 	}
+	if err := s.redis.DeleteTierConfig(ctx, apiName); err != nil {
+		logger.L.Warn("failed to invalidate redis tier cache", zap.String("api", apiName), zap.Error(err))
+	}
 	s.memDel(apiName)
-	s.redis.DeleteTierConfig(ctx, apiName)
 	return nil
 }
 
-// GetWalletConfig resolves effective limits for a wallet, fetching config + override
-// in a single Redis MGET round trip where possible.
+// GetWalletConfig resolves effective limits for a wallet.
 func (s *APIService) GetWalletConfig(ctx context.Context, apiName, wallet string) (*model.ResolvedConfig, error) {
-	tiers := s.memGet(apiName)
-
-	var overrideRaw string
-
-	if tiers != nil {
-		// Hot path: config already in process memory — only fetch override from Redis.
-		raw, err := s.redis.GetOverrideOnly(ctx, apiName, wallet)
-		if err != nil {
-			return nil, fmt.Errorf("redis override: %w", err)
-		}
-		overrideRaw = raw
-	} else {
-		// Cold path: fetch config + override together in one MGET round trip.
-		configRaw, ovRaw, err := s.redis.GetConfigAndOverride(ctx, apiName, wallet)
-		if err != nil {
-			return nil, fmt.Errorf("redis mget: %w", err)
-		}
-		overrideRaw = ovRaw
-
-		if configRaw != "" {
-			var cached []model.Tier
-			if err := json.Unmarshal([]byte(configRaw), &cached); err == nil {
-				tiers = cached
-				s.memSet(apiName, tiers)
-			}
-		}
-		if tiers == nil {
-			var err error
-			tiers, err = s.postgres.GetTiers(ctx, apiName)
-			if err != nil {
-				return nil, err
-			}
-			if tiers == nil {
-				return nil, nil
-			}
-			s.memSet(apiName, tiers)
-			s.redis.SetTierConfig(ctx, apiName, tiers)
-		}
+	tiers, overrideRaw, err := s.loadTiersAndOverride(ctx, apiName, wallet)
+	if err != nil {
+		return nil, err
 	}
-
+	if tiers == nil {
+		return nil, nil
+	}
 	override, err := s.resolveOverride(ctx, apiName, wallet, overrideRaw)
 	if err != nil {
 		return nil, err
@@ -163,63 +156,118 @@ func (s *APIService) GetWalletConfig(ctx context.Context, apiName, wallet string
 }
 
 // Check evaluates tiers sequentially — T1 → T2 → T3.
-// If a tier is blocked, subsequent tiers are skipped (not incremented).
+// Hot path: 2 Redis round trips total (1 GET for override + 1 atomic Lua EVALSHA for all tiers).
+// Tiers whose scope has no identifier (e.g. email-scoped tier when email is empty) are marked
+// "skipped" in-memory and never sent to Redis, so they do not block subsequent tiers.
 func (s *APIService) Check(ctx context.Context, apiName, email, wallet string) (*dto.CheckResponse, error) {
-	resolved, err := s.GetWalletConfig(ctx, apiName, wallet)
+	// ── Step 1: resolve config + override ────────────────────────────────────
+	tiers, overrideRaw, err := s.loadTiersAndOverride(ctx, apiName, wallet)
 	if err != nil {
 		return nil, err
 	}
-	if resolved == nil {
-		return nil, nil
+	if tiers == nil {
+		return nil, nil // API not found
 	}
 
-	results := make([]dto.TierCheckResult, 0, len(resolved.Tiers))
-	blocked := false
+	if len(tiers) == 0 {
+		return nil, nil // API exists but has no tiers configured
+	}
 
-	for _, rt := range resolved.Tiers {
+	override, err := s.resolveOverride(ctx, apiName, wallet, overrideRaw)
+	if err != nil {
+		return nil, err
+	}
+	resolved := resolveConfig(apiName, wallet, tiers, override)
+
+	// ── Step 2: separate real tiers (have a scopeID) from skipped ones ────────
+	n := len(resolved.Tiers)
+	scopeIDs := make([]string, n)
+	type realEntry struct {
+		origIdx  int
+		key      string
+		limit    int
+		ttl      int64
+		expireAt int64
+	}
+	var real []realEntry
+
+	for i, rt := range resolved.Tiers {
 		scopeID := email
 		if rt.Scope == "wallet" {
 			scopeID = wallet
 		}
-
-		if blocked || scopeID == "" {
-			results = append(results, dto.TierCheckResult{
-				Tier: rt.Tier, Scope: rt.Scope, Status: "skipped",
-				Used: 0, Limit: rt.EffectiveMax, ScopeID: scopeID,
-			})
-			continue
+		scopeIDs[i] = scopeID
+		if scopeID == "" {
+			continue // skip — no identifier for this scope
 		}
-
 		key := usageKey(rt.RedisKey, email, wallet)
-		var ttlSecs, expireAt int64
+		var ttl, exp int64
 		if rt.Unit == "daily" {
-			expireAt = nextDailyReset(rt.ResetHour)
+			exp = nextDailyReset(rt.ResetHour)
 		} else {
-			ttlSecs = windowSeconds(rt.Window, rt.Unit)
+			ttl = windowSeconds(rt.Window, rt.Unit)
 		}
-
-		pass, count, err := s.redis.CheckAndIncrement(ctx, key, rt.EffectiveMax, ttlSecs, expireAt)
-		if err != nil {
-			return nil, fmt.Errorf("check tier %d: %w", rt.Tier, err)
-		}
-
-		status := "pass"
-		if !pass {
-			status = "blocked"
-			blocked = true
-		}
-		results = append(results, dto.TierCheckResult{
-			Tier: rt.Tier, Scope: rt.Scope, Status: status,
-			Used: count, Limit: rt.EffectiveMax, ScopeID: scopeID,
-		})
+		real = append(real, realEntry{i, key, rt.EffectiveMax, ttl, exp})
 	}
 
-	return &dto.CheckResponse{Allowed: !blocked, TierResults: results}, nil
+	// ── Step 3: single atomic Lua EVALSHA for real tiers only ────────────────
+	results := make([]dto.TierCheckResult, n)
+	allowed := true
+
+	if len(real) > 0 {
+		keys := make([]string, len(real))
+		limits := make([]int, len(real))
+		ttlSecs := make([]int64, len(real))
+		expiresAt := make([]int64, len(real))
+		for j, e := range real {
+			keys[j] = e.key
+			limits[j] = e.limit
+			ttlSecs[j] = e.ttl
+			expiresAt[j] = e.expireAt
+		}
+
+		tierResults, err := s.redis.CheckAndIncrementAll(ctx, keys, limits, ttlSecs, expiresAt)
+		if err != nil {
+			return nil, fmt.Errorf("check tiers: %w", err)
+		}
+
+		// Map real results back by original index.
+		for j, e := range real {
+			tr := tierResults[j]
+			rt := resolved.Tiers[e.origIdx]
+			var status string
+			switch tr.Pass {
+			case 1:
+				status = "pass"
+			case -1:
+				status = "skipped" // blocked by a prior real tier in Lua
+			default:
+				status = "blocked"
+				allowed = false
+			}
+			results[e.origIdx] = dto.TierCheckResult{
+				Tier: rt.Tier, Scope: rt.Scope, Status: status,
+				Used: tr.Count, Limit: rt.EffectiveMax, ScopeID: scopeIDs[e.origIdx],
+			}
+		}
+	}
+
+	// Fill skipped positions (tiers with no scopeID).
+	for i, rt := range resolved.Tiers {
+		if scopeIDs[i] == "" {
+			results[i] = dto.TierCheckResult{
+				Tier: rt.Tier, Scope: rt.Scope, Status: "skipped",
+				Limit: rt.EffectiveMax, ScopeID: "",
+			}
+		}
+	}
+
+	return &dto.CheckResponse{Allowed: allowed, TierResults: results}, nil
 }
 
 // GetUsage reads current Redis counters and TTLs for all tiers in one pipeline round trip.
 func (s *APIService) GetUsage(ctx context.Context, apiName, email, wallet string) ([]dto.TierUsage, error) {
-	tiers, err := s.GetTierConfig(ctx, apiName)
+	tiers, overrideRaw, err := s.loadTiersAndOverride(ctx, apiName, wallet)
 	if err != nil {
 		return nil, err
 	}
@@ -227,10 +275,11 @@ func (s *APIService) GetUsage(ctx context.Context, apiName, email, wallet string
 		return nil, nil
 	}
 
-	resolved, err := s.GetWalletConfig(ctx, apiName, wallet)
+	override, err := s.resolveOverride(ctx, apiName, wallet, overrideRaw)
 	if err != nil {
 		return nil, err
 	}
+	resolved := resolveConfig(apiName, wallet, tiers, override)
 
 	keys := make([]string, len(tiers))
 	for i, t := range tiers {
@@ -248,26 +297,55 @@ func (s *APIService) GetUsage(ctx context.Context, apiName, email, wallet string
 		if t.Scope == "wallet" {
 			scopeID = wallet
 		}
-		effectiveMax := t.MaxRequests
-		if resolved != nil {
-			for _, rt := range resolved.Tiers {
-				if rt.Tier == t.Tier {
-					effectiveMax = rt.EffectiveMax
-					break
-				}
-			}
-		}
 		usage[i] = dto.TierUsage{
 			Tier:    t.Tier,
 			Scope:   t.Scope,
 			Used:    entries[i].Count,
-			Limit:   effectiveMax,
+			Limit:   resolved.Tiers[i].EffectiveMax,
 			ScopeID: scopeID,
 			Window:  windowLabel(t),
 			ResetIn: entries[i].ResetIn,
 		}
 	}
 	return usage, nil
+}
+
+// loadTiersAndOverride is the shared hot/cold path for loading tier config and the
+// wallet override raw value from process memory → Redis → PostgreSQL.
+func (s *APIService) loadTiersAndOverride(ctx context.Context, apiName, wallet string) ([]model.Tier, string, error) {
+	tiers := s.memGet(apiName)
+	if tiers != nil {
+		// Hot path: config in memory — one GET for override only.
+		raw, err := s.redis.GetOverrideOnly(ctx, apiName, wallet)
+		if err != nil {
+			return nil, "", fmt.Errorf("redis override: %w", err)
+		}
+		return tiers, raw, nil
+	}
+	// Cold path: MGET config + override together.
+	configRaw, overrideRaw, err := s.redis.GetConfigAndOverride(ctx, apiName, wallet)
+	if err != nil {
+		return nil, "", fmt.Errorf("redis mget: %w", err)
+	}
+	if configRaw != "" {
+		var cached []model.Tier
+		if err := json.Unmarshal([]byte(configRaw), &cached); err == nil {
+			tiers = cached
+			s.memSet(apiName, tiers)
+		}
+	}
+	if tiers == nil {
+		tiers, err = s.postgres.GetTiers(ctx, apiName)
+		if err != nil {
+			return nil, "", err
+		}
+		if tiers == nil {
+			return nil, "", nil // API not found
+		}
+		s.memSet(apiName, tiers)
+		s.redis.SetTierConfig(ctx, apiName, tiers)
+	}
+	return tiers, overrideRaw, nil
 }
 
 // ── Override operations (ScyllaDB + Redis cache) ──────────────────────────────
@@ -297,7 +375,7 @@ func (s *APIService) DeleteOverride(ctx context.Context, apiName, wallet string)
 // resolveOverride decodes the raw cached override value and falls back to ScyllaDB on miss.
 func (s *APIService) resolveOverride(ctx context.Context, apiName, wallet, raw string) (*model.Override, error) {
 	if raw == "" {
-		// Cache miss — point lookup in ScyllaDB
+		// Cache miss — point lookup in ScyllaDB.
 		o, found, err := s.scylla.GetOne(ctx, apiName, wallet)
 		if err != nil {
 			return nil, fmt.Errorf("scylla get override: %w", err)
@@ -314,7 +392,20 @@ func (s *APIService) resolveOverride(ctx context.Context, apiName, wallet, raw s
 	}
 	var o model.Override
 	if err := json.Unmarshal([]byte(raw), &o); err != nil {
-		return nil, nil // corrupt cache → treat as no override
+		// Corrupt cache entry — evict it and fall back to ScyllaDB.
+		logger.L.Warn("corrupt override cache; evicting and refreshing",
+			zap.String("api", apiName), zap.String("wallet", wallet), zap.Error(err))
+		s.redis.DeleteOverrideCache(ctx, apiName, wallet)
+		fresh, found, scyllaErr := s.scylla.GetOne(ctx, apiName, wallet)
+		if scyllaErr != nil {
+			return nil, fmt.Errorf("scylla get override: %w", scyllaErr)
+		}
+		if found {
+			s.redis.SetOverride(ctx, apiName, wallet, fresh)
+			return &fresh, nil
+		}
+		s.redis.SetOverrideNull(ctx, apiName, wallet)
+		return nil, nil
 	}
 	return &o, nil
 }
@@ -345,7 +436,7 @@ func resolveConfig(apiName, wallet string, tiers []model.Tier, override *model.O
 			}
 			if overrideStr != "" && overrideStr != "global" {
 				var v int
-				if _, err := fmt.Sscanf(overrideStr, "%d", &v); err == nil && v > 0 {
+				if _, err := fmt.Sscanf(overrideStr, "%d", &v); err == nil && v > 0 && v <= maxOverrideLimit {
 					rt.EffectiveMax = v
 					rt.Overridden = true
 				}
@@ -357,18 +448,23 @@ func resolveConfig(apiName, wallet string, tiers []model.Tier, override *model.O
 }
 
 // usageKey substitutes {e}/{w} placeholders in a redis_key template.
+// Curly braces are stripped from email and wallet first to prevent template injection
+// (e.g. an email of "x{w}y" must not cause a double substitution).
 func usageKey(template, email, wallet string) string {
-	k := strings.ReplaceAll(template, "{e}", email)
-	k = strings.ReplaceAll(k, "{w}", wallet)
+	safeEmail := strings.NewReplacer("{", "", "}", "").Replace(email)
+	safeWallet := strings.NewReplacer("{", "", "}", "").Replace(wallet)
+	k := strings.ReplaceAll(template, "{e}", safeEmail)
+	k = strings.ReplaceAll(k, "{w}", safeWallet)
 	return k
 }
+
+var windowMultipliers = map[string]int64{"seconds": 1, "minutes": 60, "hours": 3600}
 
 func windowSeconds(window *int, unit string) int64 {
 	if window == nil {
 		return 0
 	}
-	mult := map[string]int64{"seconds": 1, "minutes": 60, "hours": 3600}
-	return int64(*window) * mult[unit]
+	return int64(*window) * windowMultipliers[unit]
 }
 
 func nextDailyReset(resetHour int) int64 {

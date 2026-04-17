@@ -4,11 +4,18 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"regexp"
 	"time"
 
 	"github.com/gocql/gocql"
 	"github.com/shafikshaon/ratelimit/internal/model"
 )
+
+var validKeyspace = regexp.MustCompile(`^[a-z][a-z0-9_]{0,47}$`)
+
+// maxPageTokenBytes is the upper bound on a decoded ScyllaDB page-state token.
+// Real page states are typically < 1KB; 8KB is a very generous upper bound.
+const maxPageTokenBytes = 8 * 1024
 
 // ScyllaService handles all ScyllaDB operations for per-wallet overrides.
 // Partition key: api_name — all overrides for one API land on the same shard,
@@ -19,6 +26,9 @@ type ScyllaService struct {
 }
 
 func NewScyllaService(session *gocql.Session, keyspace string) *ScyllaService {
+	if !validKeyspace.MatchString(keyspace) {
+		panic(fmt.Sprintf("invalid ScyllaDB keyspace name %q: must match ^[a-z][a-z0-9_]{0,47}$", keyspace))
+	}
 	return &ScyllaService{session: session, keyspace: keyspace}
 }
 
@@ -57,6 +67,9 @@ func (s *ScyllaService) List(ctx context.Context, apiName string, limit int, pag
 		state, err := base64.StdEncoding.DecodeString(pageToken)
 		if err != nil {
 			return nil, "", false, fmt.Errorf("invalid page token")
+		}
+		if len(state) >= maxPageTokenBytes {
+			return nil, "", false, fmt.Errorf("page token too large")
 		}
 		q = q.PageState(state)
 	}

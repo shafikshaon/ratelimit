@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/shafikshaon/ratelimit/internal/config"
@@ -11,8 +12,13 @@ import (
 
 func NewRedisClient(cfg *config.Config) (*redis.Client, error) {
 	client := redis.NewClient(&redis.Options{
-		Addr:     cfg.RedisAddr,
-		Password: cfg.RedisPassword,
+		Addr:         cfg.RedisAddr,
+		Password:     cfg.RedisPassword,
+		PoolSize:     50, // max connections; tune to goroutine concurrency
+		MinIdleConns: 10, // keep warm connections ready
+		DialTimeout:  2 * time.Second,
+		ReadTimeout:  500 * time.Millisecond,
+		WriteTimeout: 500 * time.Millisecond,
 	})
 
 	// Attach hook — logs every command and pipeline with full args and duration.

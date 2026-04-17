@@ -6,6 +6,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 type pgxTracer struct{}
@@ -34,11 +35,15 @@ func (t *pgxTracer) TraceQueryEnd(ctx context.Context, _ *pgx.Conn, d pgx.TraceQ
 	if span == nil {
 		return
 	}
+	// Args may contain PII (wallet, email). Only include them at debug level.
+	isDebug := L.Core().Enabled(zapcore.DebugLevel)
 	fields := []zap.Field{
 		zap.String("sql", span.sql),
-		zap.Any("args", span.args),
 		zap.Duration("duration", time.Since(span.start)),
 		zap.Int64("rows_affected", d.CommandTag.RowsAffected()),
+	}
+	if isDebug {
+		fields = append(fields, zap.Any("args", span.args))
 	}
 	if d.Err != nil {
 		fields = append(fields, zap.Error(d.Err))

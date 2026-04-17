@@ -8,31 +8,64 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/shafikshaon/ratelimit/internal/logger"
 	"github.com/shafikshaon/ratelimit/internal/model"
+	"go.uber.org/zap"
 )
 
 const (
 	tierCachePrefix      = "rl:config:"
 	overrideCachePrefix  = "rl:override:"
 	overrideNullSentinel = "null"
-	overrideCacheTTL     = 5 * time.Minute
+	overrideCacheTTL     = 30 * time.Minute
 )
 
-// checkIncrScript atomically checks a counter against a limit and increments if allowed.
-// Returns {1, new_count} on pass, {0, current_count} on block.
-// ARGV[1]=limit  ARGV[2]=ttl_seconds (rolling; 0=skip)  ARGV[3]=expireat_unix (daily; 0=skip)
-var checkIncrScript = redis.NewScript(`
-local cur = tonumber(redis.call('GET', KEYS[1])) or 0
-if cur >= tonumber(ARGV[1]) then return {0, cur} end
-local n = redis.call('INCR', KEYS[1])
-if n == 1 then
-  local ttl = tonumber(ARGV[2])
-  local exp = tonumber(ARGV[3])
-  if ttl > 0 then redis.call('EXPIRE', KEYS[1], ttl)
-  elseif exp > 0 then redis.call('EXPIREAT', KEYS[1], exp) end
+// checkAllScript atomically checks and increments N tier counters in sequence.
+// Evaluation stops at the first blocked tier (subsequent tiers are skipped, not incremented).
+// This replaces 3 sequential EVALSHAs with a single atomic Lua execution.
+//
+// KEYS: [key1, key2, ..., keyN]   — one Redis key per tier counter
+// ARGV: [limit1, ttl1, exp1, limit2, ttl2, exp2, ...]  — 3 values per tier
+//
+// Returns flat array: [pass1, count1, pass2, count2, ...]
+//
+//	pass = 1 (allowed), 0 (blocked), -1 (skipped because prior tier blocked)
+var checkAllScript = redis.NewScript(`
+local n = #KEYS
+local results = {}
+local blocked = false
+for i = 1, n do
+  if blocked then
+    results[#results+1] = -1
+    results[#results+1] = 0
+  else
+    local limit = tonumber(ARGV[(i-1)*3 + 1])
+    local ttl   = tonumber(ARGV[(i-1)*3 + 2])
+    local exp   = tonumber(ARGV[(i-1)*3 + 3])
+    local cur = tonumber(redis.call('GET', KEYS[i])) or 0
+    if cur >= limit then
+      results[#results+1] = 0
+      results[#results+1] = cur
+      blocked = true
+    else
+      local newval = redis.call('INCR', KEYS[i])
+      if newval == 1 then
+        if ttl > 0 then redis.call('EXPIRE', KEYS[i], ttl)
+        elseif exp > 0 then redis.call('EXPIREAT', KEYS[i], exp) end
+      end
+      results[#results+1] = 1
+      results[#results+1] = newval
+    end
+  end
 end
-return {1, n}
+return results
 `)
+
+// TierResult holds the outcome of a single tier check from CheckAndIncrementAll.
+type TierResult struct {
+	Pass  int8 // 1=allowed, 0=blocked, -1=skipped
+	Count int64
+}
 
 // RedisService handles all Redis operations: config caching, override caching,
 // rate-limit counters, and usage reads.
@@ -62,13 +95,17 @@ func (s *RedisService) GetTierConfig(ctx context.Context, apiName string) ([]mod
 }
 
 func (s *RedisService) SetTierConfig(ctx context.Context, apiName string, tiers []model.Tier) {
-	if raw, err := json.Marshal(tiers); err == nil {
-		s.client.Set(ctx, tierCachePrefix+apiName, raw, 0) // best-effort, no TTL
+	raw, err := json.Marshal(tiers)
+	if err != nil {
+		return
+	}
+	if err := s.client.Set(ctx, tierCachePrefix+apiName, raw, 0).Err(); err != nil {
+		logger.L.Warn("redis: set tier config failed", zap.String("api", apiName), zap.Error(err))
 	}
 }
 
-func (s *RedisService) DeleteTierConfig(ctx context.Context, apiName string) {
-	s.client.Del(ctx, tierCachePrefix+apiName)
+func (s *RedisService) DeleteTierConfig(ctx context.Context, apiName string) error {
+	return s.client.Del(ctx, tierCachePrefix+apiName).Err()
 }
 
 // ── Override cache ────────────────────────────────────────────────────────────
@@ -88,17 +125,25 @@ func (s *RedisService) GetOverrideRaw(ctx context.Context, apiName, wallet strin
 }
 
 func (s *RedisService) SetOverride(ctx context.Context, apiName, wallet string, o model.Override) {
-	if raw, err := json.Marshal(o); err == nil {
-		s.client.Set(ctx, overrideCacheKey(apiName, wallet), raw, overrideCacheTTL)
+	raw, err := json.Marshal(o)
+	if err != nil {
+		return
+	}
+	if err := s.client.Set(ctx, overrideCacheKey(apiName, wallet), raw, overrideCacheTTL).Err(); err != nil {
+		logger.L.Warn("redis: set override failed", zap.String("api", apiName), zap.String("wallet", wallet), zap.Error(err))
 	}
 }
 
 func (s *RedisService) SetOverrideNull(ctx context.Context, apiName, wallet string) {
-	s.client.Set(ctx, overrideCacheKey(apiName, wallet), overrideNullSentinel, overrideCacheTTL)
+	if err := s.client.Set(ctx, overrideCacheKey(apiName, wallet), overrideNullSentinel, overrideCacheTTL).Err(); err != nil {
+		logger.L.Warn("redis: set override null failed", zap.String("api", apiName), zap.String("wallet", wallet), zap.Error(err))
+	}
 }
 
 func (s *RedisService) DeleteOverrideCache(ctx context.Context, apiName, wallet string) {
-	s.client.Del(ctx, overrideCacheKey(apiName, wallet))
+	if err := s.client.Del(ctx, overrideCacheKey(apiName, wallet)).Err(); err != nil {
+		logger.L.Warn("redis: delete override cache failed", zap.String("api", apiName), zap.String("wallet", wallet), zap.Error(err))
+	}
 }
 
 // ── Bulk reads ────────────────────────────────────────────────────────────────
@@ -134,17 +179,32 @@ func (s *RedisService) GetOverrideOnly(ctx context.Context, apiName, wallet stri
 
 // ── Rate-limit counter ────────────────────────────────────────────────────────
 
-// CheckAndIncrement atomically checks the counter and increments it if under the limit.
-// Returns (pass, currentCount, error).
-func (s *RedisService) CheckAndIncrement(ctx context.Context, key string, limit int, ttlSecs, expireAt int64) (bool, int64, error) {
-	raw, err := checkIncrScript.Run(ctx, s.client, []string{key}, limit, ttlSecs, expireAt).Result()
-	if err != nil {
-		return false, 0, err
+// CheckAndIncrementAll atomically checks and increments all tier counters in one
+// Redis round trip. Evaluation stops at the first blocked tier — subsequent tiers
+// are not incremented (pass=-1, count=0 returned for them).
+//
+// keys, limits, ttlSecs, expiresAt must all have the same length.
+func (s *RedisService) CheckAndIncrementAll(ctx context.Context, keys []string, limits []int, ttlSecs, expiresAt []int64) ([]TierResult, error) {
+	n := len(keys)
+	argv := make([]interface{}, 0, n*3)
+	for i := 0; i < n; i++ {
+		argv = append(argv, limits[i], ttlSecs[i], expiresAt[i])
 	}
-	arr, _ := raw.([]interface{})
-	pass := toInt64(arr, 0) == 1
-	count := toInt64(arr, 1)
-	return pass, count, nil
+
+	raw, err := checkAllScript.Run(ctx, s.client, keys, argv...).Result()
+	if err != nil {
+		return nil, err
+	}
+	arr, ok := raw.([]interface{})
+	if !ok || len(arr) < n*2 {
+		return nil, fmt.Errorf("redis: unexpected Lua response type %T (len=%d, want>=%d)", raw, len(arr), n*2)
+	}
+	results := make([]TierResult, n)
+	for i := 0; i < n; i++ {
+		results[i].Pass = int8(toInt64(arr, i*2))
+		results[i].Count = toInt64(arr, i*2+1)
+	}
+	return results, nil
 }
 
 // ── Usage read (counts + TTLs in one pipeline) ────────────────────────────────
@@ -166,7 +226,10 @@ func (s *RedisService) GetUsageWithTTL(ctx context.Context, keys []string) ([]Us
 		return nil, fmt.Errorf("redis pipeline: %w", err)
 	}
 
-	vals, _ := mgetCmd.Result()
+	vals, err := mgetCmd.Result()
+	if err != nil && err != redis.Nil {
+		return nil, fmt.Errorf("redis pipeline mget: %w", err)
+	}
 	entries := make([]UsageEntry, len(keys))
 	for i := range keys {
 		if i < len(vals) && vals[i] != nil {

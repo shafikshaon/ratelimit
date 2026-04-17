@@ -48,7 +48,7 @@ func Init(dev bool) {
 	consoleSink := zapcore.AddSync(os.Stdout)
 
 	// ── File sink (always JSON, rotating) ────────────────────────────────────
-	if err := os.MkdirAll(filepath.Dir(logFile), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(logFile), 0o750); err != nil {
 		panic("logger: cannot create log dir: " + err.Error())
 	}
 

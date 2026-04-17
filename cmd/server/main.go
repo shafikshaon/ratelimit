@@ -62,9 +62,11 @@ func main() {
 	apiSvc := service.NewAPIService(pgSvc, redisSvc, scyllaSvc)
 
 	// Warm Redis cache at startup so the first requests don't hit PostgreSQL.
-	if err := warmCache(context.Background(), apiSvc); err != nil {
+	wctx, wcancel := context.WithTimeout(context.Background(), 30*time.Second)
+	if err := warmCache(wctx, apiSvc); err != nil {
 		log.Warn("tier cache warm-up failed", zap.Error(err))
 	}
+	wcancel()
 
 	// ── HTTP layer ────────────────────────────────────────────────────────────
 
@@ -72,6 +74,10 @@ func main() {
 
 	router := gin.Default()
 	router.Use(cors.Default())
+	router.Use(requestTimeoutMiddleware(10 * time.Second))
+
+	router.GET("/health", healthHandler(db, redisClient))
+	router.GET("/ready", healthHandler(db, redisClient))
 
 	router.StaticFile("/", "./index.html")
 	router.StaticFile("/tester.html", "./tester.html")
@@ -89,7 +95,13 @@ func main() {
 		v1.DELETE("/apis/:name/overrides/:wallet", apiHandler.DeleteOverride)
 	}
 
-	srv := &http.Server{Addr: ":" + cfg.ServerPort, Handler: router}
+	srv := &http.Server{
+		Addr:         ":" + cfg.ServerPort,
+		Handler:      router,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
 
 	go func() {
 		log.Info("server listening", zap.String("addr", ":"+cfg.ServerPort))
