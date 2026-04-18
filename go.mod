@@ -8,7 +8,7 @@ require (
 	github.com/gocql/gocql v1.7.0
 	github.com/jackc/pgx/v5 v5.7.2
 	github.com/joho/godotenv v1.5.1
-	github.com/redis/go-redis/v9 v9.7.0
+	github.com/redis/go-redis/v9 v9.7.3
 	go.uber.org/zap v1.27.1
 	gopkg.in/lumberjack.v2 v2.0.0
 )
