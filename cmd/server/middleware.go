@@ -8,6 +8,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
+	"github.com/shafikshaon/ratelimit/internal/logger"
+	"github.com/shafikshaon/ratelimit/internal/querycount"
+	"go.uber.org/zap"
 )
 
 // requestTimeoutMiddleware cancels the request context after d, preventing slow
@@ -18,6 +21,34 @@ func requestTimeoutMiddleware(d time.Duration) gin.HandlerFunc {
 		defer cancel()
 		c.Request = c.Request.WithContext(ctx)
 		c.Next()
+	}
+}
+
+// queryCountLoggerMiddleware injects a per-request query counter into the context,
+// then logs Postgres / Redis / ScyllaDB query counts after the handler returns.
+// Applied only to /api/v1 routes — not to health checks or static files.
+func queryCountLoggerMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := querycount.NewContext(c.Request.Context())
+		c.Request = c.Request.WithContext(ctx)
+		start := time.Now()
+
+		c.Next()
+
+		qc := querycount.FromContext(c.Request.Context())
+		if qc == nil {
+			return
+		}
+		logger.L.Info("db query counts",
+			zap.String("method", c.Request.Method),
+			zap.String("path", c.FullPath()),
+			zap.String("api", c.Param("name")),
+			zap.Int("status", c.Writer.Status()),
+			zap.Int("postgres", qc.Postgres),
+			zap.Int("redis", qc.Redis),
+			zap.Int("scylla", qc.Scylla),
+			zap.Duration("latency", time.Since(start).Round(time.Microsecond)),
+		)
 	}
 }
 

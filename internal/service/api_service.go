@@ -11,9 +11,7 @@ import (
 	"time"
 
 	"github.com/shafikshaon/ratelimit/internal/dto"
-	"github.com/shafikshaon/ratelimit/internal/logger"
 	"github.com/shafikshaon/ratelimit/internal/model"
-	"go.uber.org/zap"
 )
 
 // errNotFound is returned when an update targets a row that does not exist.
@@ -131,9 +129,7 @@ func (s *APIService) UpdateTier(ctx context.Context, apiName string, tierNum int
 	if err := s.postgres.UpdateTier(ctx, apiName, tierNum, t); err != nil {
 		return err
 	}
-	if err := s.redis.DeleteTierConfig(ctx, apiName); err != nil {
-		logger.L.Warn("failed to invalidate redis tier cache", zap.String("api", apiName), zap.Error(err))
-	}
+	_ = s.redis.DeleteTierConfig(ctx, apiName)
 	s.memDel(apiName)
 	return nil
 }
@@ -388,8 +384,6 @@ func (s *APIService) resolveOverride(ctx context.Context, apiName, wallet, raw s
 	var o model.Override
 	if err := json.Unmarshal([]byte(raw), &o); err != nil {
 		// Corrupt cache entry — evict it and fall back to ScyllaDB.
-		logger.L.Warn("corrupt override cache; evicting and refreshing",
-			zap.String("api", apiName), zap.String("wallet", wallet), zap.Error(err))
 		s.redis.DeleteOverrideCache(ctx, apiName, wallet)
 		fresh, found, scyllaErr := s.scylla.GetOne(ctx, apiName, wallet)
 		if scyllaErr != nil {

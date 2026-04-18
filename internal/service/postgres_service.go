@@ -5,6 +5,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shafikshaon/ratelimit/internal/model"
+	"github.com/shafikshaon/ratelimit/internal/querycount"
 )
 
 // PostgresService handles all PostgreSQL queries.
@@ -18,6 +19,7 @@ func NewPostgresService(db *pgxpool.Pool) *PostgresService {
 
 // ListGrouped returns all APIs grouped by group_name (no tiers, cheap list query).
 func (s *PostgresService) ListGrouped(ctx context.Context) ([]model.APIGroup, error) {
+	querycount.IncPostgres(ctx)
 	rows, err := s.db.Query(ctx, `SELECT id, name, group_name FROM apis ORDER BY group_name, name`)
 	if err != nil {
 		return nil, err
@@ -53,6 +55,7 @@ func (s *PostgresService) ListGrouped(ctx context.Context) ([]model.APIGroup, er
 
 // ListAll returns every API — used for warming the Redis cache on startup.
 func (s *PostgresService) ListAll(ctx context.Context) ([]model.API, error) {
+	querycount.IncPostgres(ctx)
 	rows, err := s.db.Query(ctx, `SELECT id, name, group_name FROM apis ORDER BY id`)
 	if err != nil {
 		return nil, err
@@ -73,6 +76,7 @@ func (s *PostgresService) ListAll(ctx context.Context) ([]model.API, error) {
 // GetAllTiers fetches every tier for every API in a single query, returning a map of api_name → tiers.
 // Used at startup to warm caches without an N+1 per API.
 func (s *PostgresService) GetAllTiers(ctx context.Context) (map[string][]model.Tier, error) {
+	querycount.IncPostgres(ctx)
 	rows, err := s.db.Query(ctx, `
 		SELECT a.name, t.id, t.tier, t.scope, t.redis_key, t.window_size, t.window_unit,
 		       t.max_requests, t.reset_hour
@@ -102,6 +106,7 @@ func (s *PostgresService) GetAllTiers(ctx context.Context) (map[string][]model.T
 // Returns (nil, nil) when the API name does not exist.
 // Returns ([]model.Tier{}, nil) when the API exists but has no tiers configured.
 func (s *PostgresService) GetTiers(ctx context.Context, apiName string) ([]model.Tier, error) {
+	querycount.IncPostgres(ctx)
 	rows, err := s.db.Query(ctx, `
 		SELECT t.id, t.tier, t.scope, t.redis_key, t.window_size, t.window_unit,
 		       t.max_requests, t.reset_hour
@@ -130,6 +135,7 @@ func (s *PostgresService) GetTiers(ctx context.Context, apiName string) ([]model
 	if tiers == nil {
 		// Distinguish "API not found" from "API has no tiers".
 		var exists bool
+		querycount.IncPostgres(ctx)
 		if err := s.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM apis WHERE name = $1)`, apiName).Scan(&exists); err != nil {
 			return nil, err
 		}
@@ -143,6 +149,7 @@ func (s *PostgresService) GetTiers(ctx context.Context, apiName string) ([]model
 
 // UpdateTier writes new limits for a specific tier and returns an error if not found.
 func (s *PostgresService) UpdateTier(ctx context.Context, apiName string, tierNum int, t model.Tier) error {
+	querycount.IncPostgres(ctx)
 	tag, err := s.db.Exec(ctx, `
 		UPDATE api_tiers
 		SET window_size = $1, window_unit = $2, max_requests = $3, reset_hour = $4

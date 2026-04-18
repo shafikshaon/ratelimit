@@ -8,10 +8,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/shafikshaon/ratelimit/internal/dto"
-	"github.com/shafikshaon/ratelimit/internal/logger"
 	"github.com/shafikshaon/ratelimit/internal/model"
 	"github.com/shafikshaon/ratelimit/internal/service"
-	"go.uber.org/zap"
 )
 
 const (
@@ -94,7 +92,6 @@ func (h *APIHandler) UpdateTier(c *gin.Context) {
 
 	var req dto.UpdateTierRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		logger.L.Debug("UpdateTier bad JSON", zap.Error(err))
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
@@ -175,7 +172,6 @@ func (h *APIHandler) CheckRequest(c *gin.Context) {
 
 	var req dto.CheckRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		logger.L.Debug("CheckRequest bad JSON", zap.Error(err))
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
@@ -273,7 +269,6 @@ func (h *APIHandler) CreateOverride(c *gin.Context) {
 
 	var req dto.CreateOverrideRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		logger.L.Debug("CreateOverride bad JSON", zap.Error(err))
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}

@@ -9,6 +9,7 @@ import (
 
 	"github.com/gocql/gocql"
 	"github.com/shafikshaon/ratelimit/internal/model"
+	"github.com/shafikshaon/ratelimit/internal/querycount"
 )
 
 var validKeyspace = regexp.MustCompile(`^[a-z][a-z0-9_]{0,47}$`)
@@ -34,6 +35,7 @@ func NewScyllaService(session *gocql.Session, keyspace string) *ScyllaService {
 
 // GetOne does a point lookup for a single wallet override.
 func (s *ScyllaService) GetOne(ctx context.Context, apiName, wallet string) (model.Override, bool, error) {
+	querycount.IncScylla(ctx)
 	var o model.Override
 	err := s.session.Query(fmt.Sprintf(`
 		SELECT wallet, t1_limit, t2_limit, t3_limit, reason
@@ -55,6 +57,7 @@ func (s *ScyllaService) GetOne(ctx context.Context, apiName, wallet string) (mod
 // List returns a cursor-paginated page of overrides for apiName.
 // pageToken is a base64-encoded ScyllaDB page state; empty = first page.
 func (s *ScyllaService) List(ctx context.Context, apiName string, limit int, pageToken string) ([]model.Override, string, bool, error) {
+	querycount.IncScylla(ctx)
 	q := s.session.Query(fmt.Sprintf(`
 		SELECT wallet, t1_limit, t2_limit, t3_limit, reason
 		FROM %s.api_overrides
@@ -105,6 +108,7 @@ func (s *ScyllaService) List(ctx context.Context, apiName string, limit int, pag
 
 // Create inserts or updates a wallet override (upsert semantics).
 func (s *ScyllaService) Create(ctx context.Context, apiName string, o model.Override) error {
+	querycount.IncScylla(ctx)
 	if o.T1 == "" {
 		o.T1 = "global"
 	}
@@ -123,6 +127,7 @@ func (s *ScyllaService) Create(ctx context.Context, apiName string, o model.Over
 
 // Delete removes a wallet override.
 func (s *ScyllaService) Delete(ctx context.Context, apiName, wallet string) error {
+	querycount.IncScylla(ctx)
 	return s.session.Query(fmt.Sprintf(`
 		DELETE FROM %s.api_overrides WHERE api_name = ? AND wallet = ?
 	`, s.keyspace), apiName, wallet).WithContext(ctx).Exec()

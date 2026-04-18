@@ -7,16 +7,13 @@ import (
 	"sort"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/shafikshaon/ratelimit/internal/logger"
 	"github.com/shafikshaon/ratelimit/internal/service"
-	"go.uber.org/zap"
 )
 
 func runMigrations(db *pgxpool.Pool) error {
 	entries, err := os.ReadDir("./migrations")
 	if err != nil {
 		if os.IsNotExist(err) {
-			logger.L.Warn("migrations directory not found; skipping")
 			return nil
 		}
 		return err
@@ -37,7 +34,6 @@ func runMigrations(db *pgxpool.Pool) error {
 		if _, err := db.Exec(context.Background(), string(sql)); err != nil {
 			return err
 		}
-		logger.L.Info("migration applied", zap.String("file", entry.Name()))
 	}
 	return nil
 }

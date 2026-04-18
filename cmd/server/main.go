@@ -16,42 +16,40 @@ import (
 	"github.com/shafikshaon/ratelimit/internal/handler"
 	"github.com/shafikshaon/ratelimit/internal/logger"
 	"github.com/shafikshaon/ratelimit/internal/service"
-	"go.uber.org/zap"
 )
 
 func main() {
 	logger.Init(os.Getenv("GIN_MODE") != "release")
 	defer logger.Sync()
 
-	log := logger.L
 	cfg := config.Load()
 
 	// ── Storage connections ───────────────────────────────────────────────────
 
 	db, err := database.NewPool(cfg)
 	if err != nil {
-		log.Fatal("connect to postgres", zap.Error(err))
+		panic(err)
 	}
 	defer db.Close()
 
 	if err := runMigrations(db); err != nil {
-		log.Fatal("run migrations", zap.Error(err))
+		panic(err)
 	}
 
 	redisClient, err := database.NewRedisClient(cfg)
 	if err != nil {
-		log.Fatal("connect to redis", zap.Error(err))
+		panic(err)
 	}
 	defer redisClient.Close()
 
 	scyllaSession, err := database.NewScyllaSession(cfg)
 	if err != nil {
-		log.Fatal("connect to scylla", zap.Error(err))
+		panic(err)
 	}
 	defer scyllaSession.Close()
 
 	if err := database.InitScyllaSchema(scyllaSession, cfg.ScyllaKeyspace); err != nil {
-		log.Fatal("init scylla schema", zap.Error(err))
+		panic(err)
 	}
 
 	// ── Service layer ─────────────────────────────────────────────────────────
@@ -60,11 +58,10 @@ func main() {
 	redisSvc := service.NewRedisService(redisClient)
 	scyllaSvc := service.NewScyllaService(scyllaSession, cfg.ScyllaKeyspace)
 	apiSvc := service.NewAPIService(pgSvc, redisSvc, scyllaSvc)
+
 	// Warm Redis cache at startup so the first requests don't hit PostgreSQL.
 	wctx, wcancel := context.WithTimeout(context.Background(), 30*time.Second)
-	if err := warmCache(wctx, apiSvc); err != nil {
-		log.Warn("tier cache warm-up failed", zap.Error(err))
-	}
+	_ = warmCache(wctx, apiSvc)
 	wcancel()
 
 	// ── HTTP layer ────────────────────────────────────────────────────────────
@@ -97,6 +94,7 @@ func main() {
 	router.StaticFile("/tester.html", "./tester.html")
 
 	v1 := router.Group("/api/v1")
+	v1.Use(queryCountLoggerMiddleware())
 	{
 		v1.GET("/apis", apiHandler.ListAPIs)
 		v1.GET("/apis/:name", apiHandler.GetAPI)
@@ -107,7 +105,6 @@ func main() {
 		v1.GET("/apis/:name/overrides", apiHandler.ListOverrides)
 		v1.POST("/apis/:name/overrides", apiHandler.CreateOverride)
 		v1.DELETE("/apis/:name/overrides/:wallet", apiHandler.DeleteOverride)
-
 	}
 
 	srv := &http.Server{
@@ -119,9 +116,8 @@ func main() {
 	}
 
 	go func() {
-		log.Info("server listening", zap.String("addr", ":"+cfg.ServerPort))
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatal("listen", zap.Error(err))
+			panic(err)
 		}
 	}()
 
@@ -129,11 +125,7 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	log.Info("shutting down server...")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatal("server forced shutdown", zap.Error(err))
-	}
-	log.Info("server stopped")
+	_ = srv.Shutdown(ctx)
 }

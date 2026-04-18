@@ -8,9 +8,8 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"github.com/shafikshaon/ratelimit/internal/logger"
 	"github.com/shafikshaon/ratelimit/internal/model"
-	"go.uber.org/zap"
+	"github.com/shafikshaon/ratelimit/internal/querycount"
 )
 
 const (
@@ -80,6 +79,7 @@ func NewRedisService(client *redis.Client) *RedisService {
 // ── Tier config cache ─────────────────────────────────────────────────────────
 
 func (s *RedisService) GetTierConfig(ctx context.Context, apiName string) ([]model.Tier, bool, error) {
+	querycount.IncRedis(ctx)
 	data, err := s.client.Get(ctx, tierCachePrefix+apiName).Result()
 	if err == redis.Nil {
 		return nil, false, nil
@@ -99,12 +99,12 @@ func (s *RedisService) SetTierConfig(ctx context.Context, apiName string, tiers 
 	if err != nil {
 		return
 	}
-	if err := s.client.Set(ctx, tierCachePrefix+apiName, raw, 0).Err(); err != nil {
-		logger.L.Warn("redis: set tier config failed", zap.String("api", apiName), zap.Error(err))
-	}
+	querycount.IncRedis(ctx)
+	_ = s.client.Set(ctx, tierCachePrefix+apiName, raw, 0).Err()
 }
 
 func (s *RedisService) DeleteTierConfig(ctx context.Context, apiName string) error {
+	querycount.IncRedis(ctx)
 	return s.client.Del(ctx, tierCachePrefix+apiName).Err()
 }
 
@@ -117,6 +117,7 @@ func overrideCacheKey(apiName, wallet string) string {
 // GetOverrideRaw returns the raw cached value for a wallet override.
 // ("null" sentinel = negatively cached; "" = cache miss).
 func (s *RedisService) GetOverrideRaw(ctx context.Context, apiName, wallet string) (string, error) {
+	querycount.IncRedis(ctx)
 	val, err := s.client.Get(ctx, overrideCacheKey(apiName, wallet)).Result()
 	if err == redis.Nil {
 		return "", nil
@@ -129,21 +130,18 @@ func (s *RedisService) SetOverride(ctx context.Context, apiName, wallet string, 
 	if err != nil {
 		return
 	}
-	if err := s.client.Set(ctx, overrideCacheKey(apiName, wallet), raw, overrideCacheTTL).Err(); err != nil {
-		logger.L.Warn("redis: set override failed", zap.String("api", apiName), zap.String("wallet", wallet), zap.Error(err))
-	}
+	querycount.IncRedis(ctx)
+	_ = s.client.Set(ctx, overrideCacheKey(apiName, wallet), raw, overrideCacheTTL).Err()
 }
 
 func (s *RedisService) SetOverrideNull(ctx context.Context, apiName, wallet string) {
-	if err := s.client.Set(ctx, overrideCacheKey(apiName, wallet), overrideNullSentinel, overrideCacheTTL).Err(); err != nil {
-		logger.L.Warn("redis: set override null failed", zap.String("api", apiName), zap.String("wallet", wallet), zap.Error(err))
-	}
+	querycount.IncRedis(ctx)
+	_ = s.client.Set(ctx, overrideCacheKey(apiName, wallet), overrideNullSentinel, overrideCacheTTL).Err()
 }
 
 func (s *RedisService) DeleteOverrideCache(ctx context.Context, apiName, wallet string) {
-	if err := s.client.Del(ctx, overrideCacheKey(apiName, wallet)).Err(); err != nil {
-		logger.L.Warn("redis: delete override cache failed", zap.String("api", apiName), zap.String("wallet", wallet), zap.Error(err))
-	}
+	querycount.IncRedis(ctx)
+	_ = s.client.Del(ctx, overrideCacheKey(apiName, wallet)).Err()
 }
 
 // ── Bulk reads ────────────────────────────────────────────────────────────────
@@ -155,6 +153,7 @@ func (s *RedisService) MGet(ctx context.Context, keys ...string) ([]interface{},
 
 // GetConfigAndOverride fetches tier config + override in one MGET round trip.
 func (s *RedisService) GetConfigAndOverride(ctx context.Context, apiName, wallet string) (configRaw string, overrideRaw string, err error) {
+	querycount.IncRedis(ctx)
 	vals, err := s.client.MGet(ctx, tierCachePrefix+apiName, overrideCacheKey(apiName, wallet)).Result()
 	if err != nil {
 		return "", "", err
@@ -170,6 +169,7 @@ func (s *RedisService) GetConfigAndOverride(ctx context.Context, apiName, wallet
 
 // GetOverrideOnly fetches only the override key (when config is already in process memory).
 func (s *RedisService) GetOverrideOnly(ctx context.Context, apiName, wallet string) (string, error) {
+	querycount.IncRedis(ctx)
 	val, err := s.client.Get(ctx, overrideCacheKey(apiName, wallet)).Result()
 	if err == redis.Nil {
 		return "", nil
@@ -191,6 +191,7 @@ func (s *RedisService) CheckAndIncrementAll(ctx context.Context, keys []string, 
 		argv = append(argv, limits[i], ttlSecs[i], expiresAt[i])
 	}
 
+	querycount.IncRedis(ctx)
 	raw, err := checkAllScript.Run(ctx, s.client, keys, argv...).Result()
 	if err != nil {
 		return nil, err
@@ -219,6 +220,7 @@ func (s *RedisService) GetUsageWithTTL(ctx context.Context, keys []string) ([]Us
 	if len(keys) == 0 {
 		return []UsageEntry{}, nil
 	}
+	querycount.IncRedis(ctx)
 	pipe := s.client.Pipeline()
 	mgetCmd := pipe.MGet(ctx, keys...)
 	ttlCmds := make([]*redis.DurationCmd, len(keys))
@@ -237,12 +239,7 @@ func (s *RedisService) GetUsageWithTTL(ctx context.Context, keys []string) ([]Us
 	for i := range keys {
 		if i < len(vals) && vals[i] != nil {
 			if s, ok := vals[i].(string); ok {
-				var parseErr error
-				entries[i].Count, parseErr = strconv.ParseInt(s, 10, 64)
-				if parseErr != nil {
-					logger.L.Warn("redis: unexpected non-integer counter value",
-						zap.String("key", keys[i]), zap.String("value", s), zap.Error(parseErr))
-				}
+				entries[i].Count, _ = strconv.ParseInt(s, 10, 64)
 			}
 		}
 		entries[i].ResetIn = -1
