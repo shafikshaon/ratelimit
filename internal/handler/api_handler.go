@@ -316,6 +316,23 @@ func (h *APIHandler) CreateOverride(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"message": "ok"})
 }
 
+// ExportRedis GET /api/v1/redis/export
+// Scans all Redis keys matching ?pattern= (default "rl:*") and returns their
+// raw string values and TTLs. Intended for debugging and data export.
+func (h *APIHandler) ExportRedis(c *gin.Context) {
+	pattern := c.Query("pattern")
+	entries, err := h.svc.ExportRedisData(c.Request.Context(), pattern)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "redis export failed"})
+		return
+	}
+	keys := make([]dto.RedisKeyEntry, len(entries))
+	for i, e := range entries {
+		keys[i] = dto.RedisKeyEntry{Key: e.Key, Value: e.Value, TTLSeconds: e.TTLSeconds}
+	}
+	c.JSON(http.StatusOK, dto.RedisExportResponse{Total: len(keys), Keys: keys})
+}
+
 // DeleteOverride DELETE /api/v1/apis/:name/overrides/:wallet
 func (h *APIHandler) DeleteOverride(c *gin.Context) {
 	apiName := c.Param("name")

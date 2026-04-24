@@ -2,7 +2,7 @@ package model
 
 // Tier is the rate-limit configuration for one tier stored in PostgreSQL.
 type Tier struct {
-	ID          int    `json:"id"`
+	ID          int    `json:"-"`
 	Tier        int    `json:"tier"`
 	Scope       string `json:"scope"`
 	RedisKey    string `json:"redis_key"`
@@ -43,7 +43,7 @@ type ResolvedConfig struct {
 
 // API is used for the list endpoint sidebar (Tiers omitted) and the detail endpoint.
 type API struct {
-	ID        int    `json:"id"`
+	ID        int    `json:"-"`
 	Name      string `json:"name"`
 	GroupName string `json:"group"`
 	Tiers     []Tier `json:"tiers,omitempty"`

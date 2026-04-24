@@ -155,7 +155,7 @@
     <div style="width:1px;height:26px;background:#E2E8F0;" class="mx-1"></div>
 
     <div class="flex-1 min-w-0 hidden sm:block">
-      <span style="font-size:11.5px;color:#94A3B8;">Multi-tier rate limiting · Wallet &amp; Email scoped · Redis + ScyllaDB</span>
+      <span style="font-size:11.5px;color:#94A3B8;">Multi-tier rate limiting · Wallet &amp; Email scoped · Redis + DynamoDB</span>
     </div>
 
     <div class="flex items-center gap-2">
@@ -207,7 +207,7 @@
           <div style="display:flex;align-items:center;gap:6px;">
             <span style="width:6px;height:6px;border-radius:50%;background:#10B981;flex-shrink:0;
                          box-shadow:0 0 0 2px rgba(16,185,129,.2);"></span>
-            <span style="font-size:10px;color:#CBD5E1;">Redis · ScyllaDB · PostgreSQL</span>
+            <span style="font-size:10px;color:#CBD5E1;">Redis · DynamoDB · PostgreSQL</span>
           </div>
         </div>
       </aside>
@@ -426,7 +426,7 @@ function buildTierCard(t, idx, topCls) {
     <div><div class="flabel">Unit</div>
       <div style="position:relative;">
         <select data-field="unit" class="f-input" style="padding-right:28px;">
-          ${['seconds','minutes','hours'].map(u=>`<option${u===t.unit?' selected':''}>${u}</option>`).join('')}
+          ${(['seconds','minutes','hours'].filter(u=>!(t.tier===1&&u==='hours')&&!(t.tier===2&&u==='seconds'))).map(u=>`<option${u===t.unit?' selected':''}>${u}</option>`).join('')}
         </select>
         <svg style="position:absolute;right:9px;top:50%;transform:translateY(-50%);width:11px;height:11px;color:#CBD5E1;pointer-events:none;"
              fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6,9 12,15 18,9"/></svg>
@@ -562,12 +562,12 @@ function buildOverridesCard(apiName) {
           <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
         </svg>
         <span style="font-size:13px;font-weight:600;color:#0F172A;">Per-wallet Overrides</span>
-        <span style="font-size:10px;color:#94A3B8;">ScyllaDB · Redis cache 30 min</span>
+
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;">
         <span class="mono" style="font-size:10px;color:#64748B;background:#F8FAFC;border:1px solid #E2E8F0;
           border-radius:5px;padding:3px 10px;line-height:1.7;">
-          ScyllaDB · api_name = <b style="color:#6366F1;">${apiName}</b>
+          DynamoDB · api_name = <b style="color:#6366F1;">${apiName}</b>
           · wallet = <b style="color:#6366F1;" class="ov-kv-wallet">{wallet}</b>
           · t1 = <b style="color:#3B82F6;" class="ov-kv-t1">{t1}</b>
           · t2 = <b style="color:#3B82F6;" class="ov-kv-t2">{t2}</b>
@@ -719,7 +719,7 @@ function buildOverridesCard(apiName) {
         ${hasOv?'has override':'global defaults'}</span>
     </div>`);
 
-    const $grid = $('<div>').css({ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))', gap:'8px' });
+    const $grid = $('<div>').css({ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:'8px' });
     resolved.tiers.forEach((rt, i) => {
       const c = TIER_C[i]||TIER_C[0];
       const isD = rt.unit==='daily';
@@ -732,7 +732,7 @@ function buildOverridesCard(apiName) {
         </div>
         <p style="font-size:10px;color:#94A3B8;margin-bottom:3px;">Effective limit</p>
         <p class="mono" style="font-size:12px;font-weight:700;color:#0F172A;">${eLbl}</p>
-        ${rt.overridden?`<p class="mono" style="font-size:10px;color:#CBD5E1;text-decoration:line-through;margin-top:5px;">${gLbl}</p>`:''}
+        ${rt.overridden?`<p class="mono" style="font-size:11px;color:#94A3B8;text-decoration:line-through;text-decoration-thickness:2px;margin-top:5px;">${gLbl}</p>`:''}
         <div style="margin-top:8px;padding-top:6px;border-top:1px solid ${c.border};">
           <span style="font-size:10px;${rt.overridden?`color:${c.color};font-weight:600;`:'color:#CBD5E1;'}">
             ${rt.overridden?'↑ overridden':'global default'}</span>

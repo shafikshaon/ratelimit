@@ -62,3 +62,16 @@ type OverridePageResponse struct {
 	NextPageToken string           `json:"next_page_token,omitempty"`
 	HasMore       bool             `json:"has_more"`
 }
+
+// ── Redis export ──────────────────────────────────────────────────────────────
+
+type RedisKeyEntry struct {
+	Key        string `json:"key"`
+	Value      string `json:"value"`
+	TTLSeconds int64  `json:"ttl_seconds"` // -1 = no expiry
+}
+
+type RedisExportResponse struct {
+	Total int             `json:"total"`
+	Keys  []RedisKeyEntry `json:"keys"`
+}

@@ -464,6 +464,11 @@ func nextDailyReset(resetHour int) int64 {
 	return reset.Unix()
 }
 
+// ExportRedisData returns all Redis keys matching pattern with their values and TTLs.
+func (s *APIService) ExportRedisData(ctx context.Context, pattern string) ([]ExportEntry, error) {
+	return s.redis.ExportKeys(ctx, pattern)
+}
+
 func windowLabel(t model.Tier) string {
 	if t.Unit == "daily" {
 		return fmt.Sprintf("daily (resets %02d:00 BDT)", t.ResetHour)

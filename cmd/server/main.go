@@ -105,6 +105,7 @@ func main() {
 		v1.GET("/apis/:name/overrides", apiHandler.ListOverrides)
 		v1.POST("/apis/:name/overrides", apiHandler.CreateOverride)
 		v1.DELETE("/apis/:name/overrides/:wallet", apiHandler.DeleteOverride)
+		v1.GET("/redis/export", apiHandler.ExportRedis)
 	}
 
 	srv := &http.Server{

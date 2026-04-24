@@ -250,6 +250,56 @@ func (s *RedisService) GetUsageWithTTL(ctx context.Context, keys []string) ([]Us
 	return entries, nil
 }
 
+// ── Export ────────────────────────────────────────────────────────────────────
+
+// ExportEntry holds a single Redis key's value and TTL.
+type ExportEntry struct {
+	Key        string
+	Value      string
+	TTLSeconds int64 // -1 = no expiry
+}
+
+// ExportKeys scans all keys matching pattern and returns their raw string values
+// and TTLs in a single pipeline. Uses SCAN to avoid blocking Redis.
+// If pattern is empty, defaults to "rl:*".
+func (s *RedisService) ExportKeys(ctx context.Context, pattern string) ([]ExportEntry, error) {
+	if pattern == "" {
+		pattern = "rl:*"
+	}
+
+	var keys []string
+	iter := s.client.Scan(ctx, 0, pattern, 0).Iterator()
+	for iter.Next(ctx) {
+		keys = append(keys, iter.Val())
+	}
+	if err := iter.Err(); err != nil {
+		return nil, fmt.Errorf("redis scan: %w", err)
+	}
+	if len(keys) == 0 {
+		return []ExportEntry{}, nil
+	}
+
+	pipe := s.client.Pipeline()
+	getCmds := make([]*redis.StringCmd, len(keys))
+	ttlCmds := make([]*redis.DurationCmd, len(keys))
+	for i, k := range keys {
+		getCmds[i] = pipe.Get(ctx, k)
+		ttlCmds[i] = pipe.TTL(ctx, k)
+	}
+	_, _ = pipe.Exec(ctx)
+
+	entries := make([]ExportEntry, len(keys))
+	for i, k := range keys {
+		val, _ := getCmds[i].Result()
+		ttl := int64(-1)
+		if d, err := ttlCmds[i].Result(); err == nil && d > 0 {
+			ttl = int64(d.Seconds())
+		}
+		entries[i] = ExportEntry{Key: k, Value: val, TTLSeconds: ttl}
+	}
+	return entries, nil
+}
+
 func toInt64(arr []interface{}, i int) int64 {
 	if arr == nil || i >= len(arr) {
 		return 0
